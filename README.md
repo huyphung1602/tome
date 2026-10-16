@@ -1,0 +1,93 @@
+# tome
+
+[![ci](https://github.com/huyphung1602/tome/actions/workflows/ci.yml/badge.svg)](https://github.com/huyphung1602/tome/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/huyphung1602/tome)](https://github.com/huyphung1602/tome/releases)
+[![license](https://img.shields.io/github/license/huyphung1602/tome)](LICENSE)
+
+A minimal EPUB reader for the terminal.
+
+- One continuous scroll, centered in a readable column of at most 72 characters
+- A table of contents sidebar: click to jump, drag the border to resize
+- Remembers where you stopped in every book
+- A book picker that finds every EPUB in your home folder
+- Inline images on [Ghostty](https://ghostty.org)
+- Follows your terminal theme: no colors of its own except theme accents on headings
+- Select text with the mouse to copy clean paragraphs
+
+## Install
+
+macOS, Linux and FreeBSD. tome is a single binary, so you don't need Go or anything else:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/huyphung1602/tome/main/scripts/install.sh | sh
+```
+
+The script downloads the latest release for your OS and CPU, checks its checksum, and installs `tome` to `~/.local/bin`. To install somewhere else, set `TOME_INSTALL_DIR`; to install a specific version, set `TOME_VERSION=v0.1.0`.
+
+You can also download an archive from [Releases](https://github.com/huyphung1602/tome/releases) and put `tome` (or `tome.exe` on Windows) on your `PATH`.
+
+If you have Go 1.26 or later:
+
+```sh
+go install github.com/huyphung1602/tome/cmd/tome@latest
+```
+
+## Usage
+
+```sh
+tome                 # pick a book from your home folder
+tome ~/Books         # pick a book from a folder
+tome book.epub       # open a book directly
+```
+
+In the book picker, type to filter by title, author or file name (accents are ignored). Press `enter` to open a book and `esc` to quit.
+
+| Key | Action |
+|---|---|
+| `j` `k` / `↓` `↑` | scroll |
+| `space` `b` | page down / up |
+| `g` `G` | start / end |
+| `n` `p` | next / previous chapter |
+| `t` | show / hide contents |
+| `tab` | focus contents (`enter` jumps) |
+| `<` `>` | resize contents |
+| `i` | view the image on screen |
+| `m` `?` | menu, all keybindings |
+| `q` | back to the book list |
+| `ctrl+c` | quit |
+
+**Mouse:** click an entry in the contents or an image, drag the `│` border to resize the contents, and scroll with the wheel. Drag over text to select it; it's copied when you let go. Double-click to copy a paragraph. To use your terminal's own selection, hold `Shift` while you drag.
+
+## Images
+
+tome asks the terminal at startup whether it supports the [kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/).
+
+| Terminal | Images |
+|---|---|
+| Ghostty (also inside herdr) | inline, tested |
+| kitty, WezTerm | should work, untested |
+| others | shown as `[Image: …]`; press `i` for the caption and `o` to open the image in your viewer |
+
+To override detection, set `TOME_IMAGES=inline|modal|off`.
+
+## Configuration
+
+There is no config file.
+
+- **`TOME_IMAGES`**: `inline`, `modal` or `off`.
+- **`NO_COLOR`**: turns off heading colors.
+- **`XDG_STATE_HOME`**: where tome keeps its state. Positions and preferences are stored in `$XDG_STATE_HOME/tome/`, which defaults to `~/.local/state/tome/`.
+
+## Development
+
+```sh
+go test ./...
+go run ./cmd/tome book.epub
+scripts/build.sh          # release archives for every platform in dist/
+```
+
+To publish a release, push a tag such as `v0.1.0`. [GitHub Actions](.github/workflows/release.yml) then builds every platform and publishes the release. Design notes are in [docs/design.md](docs/design.md).
+
+## License
+
+[MIT](LICENSE)

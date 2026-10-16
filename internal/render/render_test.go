@@ -1,0 +1,257 @@
+package render
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/huyphung1602/tome/internal/epub"
+)
+
+func plain(d *Doc) string {
+	var out []string
+	for _, l := range d.Lines {
+		out = append(out, strings.TrimRight(l.Plain(), " "))
+	}
+	return strings.Join(out, "\n")
+}
+
+func one(html string, width int) *Doc {
+	return Render([]epub.Chapter{{Path: "c.html", HTML: []byte(html)}}, width)
+}
+
+func TestParagraphWrapAndSpacing(t *testing.T) {
+	d := one(`<body><p>The quick brown fox jumps over the lazy dog.</p><p>Second   para
+	here.</p></body>`, 20)
+	want := "The quick brown fox\njumps over the lazy\ndog.\n\nSecond para here."
+	if got := plain(d); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestInlineStylesStayInWord(t *testing.T) {
+	d := one(`<p>ab <b>Hel</b>lo <i>it</i></p>`, 8)
+	if got := plain(d); got != "ab Hello\nit" {
+		t.Errorf("got %q", got)
+	}
+	l := d.Lines[0]
+	var bold, italic bool
+	for _, s := range append(l.Spans, d.Lines[1].Spans...) {
+		if s.Text == "Hel" && s.Style&Bold != 0 {
+			bold = true
+		}
+		if s.Text == "it" && s.Style&Italic != 0 {
+			italic = true
+		}
+	}
+	if !bold || !italic {
+		t.Errorf("styles lost: %+v %+v", l.Spans, d.Lines[1].Spans)
+	}
+}
+
+func TestHeadingCentered(t *testing.T) {
+	d := one(`<h1>Title</h1><p>body</p><h3>Sub</h3><p>x</p><h1>Next</h1>`, 11)
+	want := "   Title\n   ─────\n\nbody\n\nSub\n\nx\n\n\n   Next\n   ────"
+	if got := plain(d); got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+	if st := d.Lines[0].Spans[len(d.Lines[0].Spans)-1].Style; st&Bold == 0 || st&H1 == 0 {
+		t.Errorf("h1 style = %b", st)
+	}
+	if st := d.Lines[5].Spans[0].Style; st&H3 == 0 || st&H1 != 0 {
+		t.Errorf("h3 style = %b", st)
+	}
+	if d.ChapterTitles[0] != "Title" {
+		t.Errorf("chapter title %q", d.ChapterTitles[0])
+	}
+}
+
+func TestListsHangingIndent(t *testing.T) {
+	d := one(`<ul><li>alpha beta gamma</li><li>x<ol><li>one</li></ol></li></ul>`, 12)
+	want := "• alpha beta\n  gamma\n• x\n  1. one"
+	if got := plain(d); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestBlockquoteAndHr(t *testing.T) {
+	d := one(`<p>a</p><blockquote><p>quoted words here</p></blockquote><hr/><p>b</p>`, 12)
+	want := "a\n\n│ quoted\n│ words here\n\n   * * *\n\nb"
+	if got := plain(d); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestPreAndBrAndImg(t *testing.T) {
+	d := one(`<pre>
+  x = 1
+  y  = 2</pre><p>line1<br/>line2</p><img alt="cat"/>`, 20)
+	want := "  x = 1\n  y  = 2\n\nline1\nline2\n\n[Image: cat]"
+	if got := plain(d); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestVietnameseAndWideWidth(t *testing.T) {
+	d := one(`<p>Tiếng Việt có dấu đầy đủ</p><p>漢字漢字漢字</p>`, 10)
+	want := "Tiếng Việt\ncó dấu đầy\nđủ\n\n漢字漢字漢\n字"
+	if got := plain(d); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestAnchorsChaptersAndLocate(t *testing.T) {
+	d := Render([]epub.Chapter{
+		{Path: "a.html", HTML: []byte(`<p>one</p><p>two</p>`)},
+		{Path: "b.html", HTML: []byte(`<p>three</p><h2 id="sec">Sec</h2><p>four <span id="mid">five</span></p>`)},
+	}, 20)
+	start := d.ChapterStart[1]
+	if d.Lines[start].Plain() != "three" {
+		t.Fatalf("chapter 1 starts at %q", d.Lines[start].Plain())
+	}
+	if l := d.Anchor("b.html", "sec"); strings.TrimSpace(d.Lines[l].Plain()) != "Sec" {
+		t.Errorf("anchor sec -> %q", d.Lines[l].Plain())
+	}
+	if l := d.Anchor("b.html", "mid"); d.Lines[l].Plain() != "four five" {
+		t.Errorf("anchor mid -> %q", d.Lines[l].Plain())
+	}
+	if l := d.Anchor("b.html", ""); l != start {
+		t.Errorf("chapter anchor = %d want %d", l, start)
+	}
+	if l := d.Anchor("missing.html", "x"); l != -1 {
+		t.Errorf("missing = %d", l)
+	}
+	// Locate round-trips through (chapter, block).
+	for i, ln := range d.Lines {
+		if ln.Plain() == "" {
+			continue
+		}
+		if got := d.Locate(ln.Chapter, ln.Block); got != i {
+			t.Errorf("Locate(%d,%d) = %d want %d", ln.Chapter, ln.Block, got, i)
+		}
+	}
+}
+
+func TestSkipsHeadAndScript(t *testing.T) {
+	d := one(`<html><head><title>T</title><style>p{}</style></head><body><script>x()</script><p>ok</p></body></html>`, 20)
+	if got := plain(d); got != "ok" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBrAtBlockEdgesTrimmed(t *testing.T) {
+	d := one(`<h3><br/><br/>Title</h3><p>x</p>`, 20)
+	if got := plain(d); got != "Title\n\nx" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestImagesWithCaptions(t *testing.T) {
+	d := Render([]epub.Chapter{{Path: "OEBPS/text/c.html", HTML: []byte(
+		`<p>a</p><figure><img src="../images/x%20y.png" alt="cat"/><figcaption>Hình 1. Con <b>mèo</b></figcaption></figure>` +
+			`<svg><image xlink:href="../images/z.jpg"/></svg>`)}}, 30)
+	if len(d.Images) != 2 {
+		t.Fatalf("images = %+v", d.Images)
+	}
+	im := d.Images[0]
+	if im.Src != "OEBPS/images/x y.png" || im.Alt != "cat" || im.Caption != "Hình 1. Con mèo" {
+		t.Errorf("image 0 = %+v", im)
+	}
+	if d.Lines[im.Line].Plain() != "[Image: cat]" || d.Lines[im.Line].Image != 1 {
+		t.Errorf("line %d = %+v", im.Line, d.Lines[im.Line])
+	}
+	if d.Images[1].Src != "OEBPS/images/z.jpg" || d.Lines[d.Images[1].Line].Image != 2 {
+		t.Errorf("svg image = %+v", d.Images[1])
+	}
+	if !strings.Contains(plain(d), "Hình 1. Con mèo") {
+		t.Error("figcaption not rendered as text")
+	}
+}
+
+func TestInlineImageRows(t *testing.T) {
+	var gotMax int
+	d := RenderWith([]epub.Chapter{{Path: "c.html", HTML: []byte(
+		`<p>a</p><img src="big.png"/><p>b</p><img src="bad.svg" alt="x"/><blockquote><img src="q.png"/></blockquote>`)}},
+		Options{Width: 20, ImageFit: func(src string, maxCols int) (int, int) {
+			switch src {
+			case "big.png":
+				return 10, 3
+			case "q.png":
+				gotMax = maxCols
+				return 4, 1
+			}
+			return 0, 0
+		}})
+	want := "a\n\n\n\n\n\nb\n\n[Image: x]\n\n"
+	if got := plain(d); got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+	im := d.Images[0]
+	if im.Cols != 10 || im.Rows != 3 || im.Pad != 5 || im.Line != 2 {
+		t.Errorf("inline image = %+v", im)
+	}
+	for r := 0; r < 3; r++ {
+		if l := d.Lines[im.Line+r]; l.Image != 1 || l.ImageRow != r || l.Blank() {
+			t.Errorf("row %d = %+v", r, l)
+		}
+	}
+	if d.Images[1].Rows != 0 || d.Lines[d.Images[1].Line].Plain() != "[Image: x]" {
+		t.Errorf("fallback image = %+v", d.Images[1])
+	}
+	if gotMax != 18 || d.Images[2].Pad != 2+(18-4)/2 {
+		t.Errorf("blockquote image maxCols=%d pad=%d", gotMax, d.Images[2].Pad)
+	}
+}
+
+func TestCSSClassHeadingsAndStyles(t *testing.T) {
+	css := ParseCSS(`
+/* calibre-style classes */
+.chap { font-size: 1.66667em; font-weight: 800; text-align: left }
+p.sec { font-size: 1.29167em; font-weight: 800 }
+.big-thin { font-size: 1.2em }
+.em, .it { font-style: italic }
+.ctr { text-align: center }
+.gone { display: none }
+.parent .child { font-weight: bold }
+@media print { .chap { color: red } }
+`)
+	d := RenderWith([]epub.Chapter{{Path: "c.html", HTML: []byte(
+		`<p class="chap">Chapter 5</p><p class="x sec">5.1 Hiding</p><p class="big-thin">plain</p>` +
+			`<p>a <span class="it">word</span></p><p class="ctr">mid</p><p class="gone">secret</p><p class="child">c</p>`)}},
+		Options{Width: 21, CSS: css})
+	want := "      Chapter 5\n      ─────────\n\n5.1 Hiding\n\nplain\n\na word\n\n         mid\n\nc"
+	if got := plain(d); got != want {
+		t.Errorf("got\n%q\nwant\n%q", got, want)
+	}
+	styleOf := func(line int, text string) Style {
+		for _, s := range d.Lines[line].Spans {
+			if strings.TrimSpace(s.Text) == text {
+				return s.Style
+			}
+		}
+		t.Fatalf("no span %q on line %d: %+v", text, line, d.Lines[line].Spans)
+		return 0
+	}
+	if styleOf(0, "Chapter 5")&(Bold|H1) != Bold|H1 || styleOf(3, "5.1 Hiding")&(Bold|H3) != Bold|H3 {
+		t.Error("css headings not bold")
+	}
+	if styleOf(5, "plain")&Bold != 0 {
+		t.Error("slightly large non-bold text should stay a paragraph")
+	}
+	if styleOf(7, "word")&Italic == 0 {
+		t.Error("italic class not applied")
+	}
+	if styleOf(11, "c")&Bold != 0 {
+		t.Error("descendant selector applied")
+	}
+	if d.ChapterTitles[0] != "Chapter 5" {
+		t.Errorf("title %q", d.ChapterTitles[0])
+	}
+}
+
+func TestConsecutiveH1sShareOneRule(t *testing.T) {
+	d := one(`<p>x</p><h1>Chapter 5</h1><h1>Information Hiding</h1><p>body</p>`, 30)
+	want := "x\n\n\n          Chapter 5\n\n      Information Hiding\n      ──────────────────\n\nbody"
+	if got := plain(d); got != want {
+		t.Errorf("got\n%q\nwant\n%q", got, want)
+	}
+}
