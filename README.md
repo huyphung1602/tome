@@ -13,6 +13,8 @@ A minimal EPUB reader for the terminal.
 - Inline images on [Ghostty](https://ghostty.org)
 - Follows your terminal theme: no colors of its own except theme accents on headings
 - Framed code blocks with syntax highlighting in your theme's colors
+- Search inside the book, with or without Vietnamese accents
+- Bookmarks on paragraphs
 - Select text with the mouse to copy clean paragraphs
 
 ## Install
@@ -48,9 +50,12 @@ In the book picker, type to filter by title, author or file name (accents are ig
 | Key | Action |
 |---|---|
 | `j` `k` / `↓` `↑` | scroll |
-| `space` `b` | page down / up |
+| `space` `b`, `l` `h`, `→` `←` | page down / up |
 | `g` `G` | start / end |
 | `n` `p` | next / previous chapter |
+| `/` | search; then `n` `N` for next / previous match, `esc` to clear |
+| `B` | bookmark the paragraph at the top of the screen |
+| `'` | list bookmarks (`enter` jumps, `d` deletes) |
 | `t` | show / hide contents |
 | `tab` | focus contents (`enter` jumps) |
 | `<` `>` | resize contents |
@@ -59,7 +64,9 @@ In the book picker, type to filter by title, author or file name (accents are ig
 | `q` | back to the book list |
 | `ctrl+c` | quit |
 
-**Mouse:** click an entry in the contents or an image, drag the `│` border to resize the contents, and scroll with the wheel. Drag over text to select it; it's copied when you let go. Double-click to copy a paragraph. To use your terminal's own selection, hold `Shift` while you drag.
+**Search** ignores case. A query typed without accents also ignores accents (`ban` finds *bạn*, *bàn*, *bán*); a query with accents matches them exactly. Phrases match across line breaks.
+
+**Mouse:** click an entry in the contents or an image, click the left margin next to a paragraph to bookmark it, drag the `│` border to resize the contents, and scroll with the wheel. Drag over text to select it; it's copied when you let go. Double-click to copy a paragraph. To use your terminal's own selection, hold `Shift` while you drag.
 
 ## Images
 

@@ -83,12 +83,25 @@ tome captures the mouse, which disables the terminal's own selection, so it impl
 - Copying sends OSC 52 and also runs the OS clipboard command when one exists, because some multiplexers drop OSC 52.
 - `Shift`+drag still reaches the terminal's native selection.
 
+## Search (`ui/search.go`)
+
+`/` opens a prompt in the status bar, and the view jumps to the first match as you type. `enter` keeps the matches, and `n` / `N` step through them, wrapping around; while matches are active, `n` means "next match" instead of "next chapter". `esc` in the prompt cancels and returns to where the search started; after `enter`, `esc` clears the matches.
+
+Matching runs per paragraph, over the rendered lines joined with single spaces, so phrases match across wraps. The text is split into clusters (a base rune plus its combining marks), so books stored in decomposed Unicode match too.
+
+Matching is "smart accent", like vim's `smartcase`: a query with no diacritics is compared after folding case and stripping marks (đ → d); a query with diacritics is compared after case folding and NFC normalization only. Every match is underlined, and the current one is reversed and bold.
+
+## Bookmarks (`ui/bookmarks.go`)
+
+A bookmark is a `(chapter, block)` pair, the same unit as the reading position, so it survives re-wrapping. `B` toggles the paragraph at the top of the screen. A click without a drag in the left margin toggles the paragraph next to it; a drag that starts in the margin still selects text. Bookmarked paragraphs show a dim `◆` on their first visible line. `'` lists bookmarks with chapter, snippet and position; jumping leaves two lines of context above. Bookmarks are stored in the book's state file.
+
 ## Menu
 
 The menu lists only what applies right now, each item with its shortcut:
 
 - keybindings (`?`)
 - show or hide contents (`t`)
+- search (`/`) and bookmarks (`'`)
 - images (`i`), only when the book has images
 - back to book list (`q`) and quit (`ctrl+c`) when the book was opened from the picker, or just quit (`q`) otherwise
 

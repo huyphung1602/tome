@@ -75,6 +75,10 @@ type Model struct {
 	notice   string // brief status message, e.g. "copied 312 chars"
 	noticeID int
 	contentX int // screen column where the reading column starts
+
+	search    searchState
+	bookmarks []state.Mark
+	bmSel     int
 }
 
 // isMouseFragment spots the tail of a mouse escape sequence (e.g.
@@ -106,7 +110,7 @@ func (m *Model) SetBookList(on bool) { m.bookList = on }
 func (m *Model) QuitAll() bool { return m.quitAll }
 
 func New(book *epub.Book, pos state.Position, save func(state.Position)) *Model {
-	m := &Model{book: book, save: save, showTOC: !pos.HideTOC, restore: &pos, lastSel: -2}
+	m := &Model{book: book, save: save, showTOC: !pos.HideTOC, restore: &pos, lastSel: -2, bookmarks: pos.Bookmarks}
 	m.sideW = defaultTOC
 	if pos.TOCWidth > 0 {
 		m.sideW = max(minTOC, min(maxTOC, pos.TOCWidth))
@@ -172,6 +176,11 @@ func (m *Model) layout() {
 		m.top = m.doc.Locate(pos.Chapter, pos.Block)
 	}
 	m.clamp()
+	if m.search.query != "" { // line numbers changed: find the hits again
+		cur := m.search.cur
+		m.search.matches = m.findMatches(m.search.query)
+		m.search.cur = min(cur, max(0, len(m.search.matches)-1))
+	}
 	m.cursor = max(0, m.current())
 }
 
@@ -190,6 +199,7 @@ func (m *Model) position() state.Position {
 		p.Chapter, p.Block = l.Chapter, l.Block
 		p.Progress = m.percent()
 	}
+	p.Bookmarks = m.bookmarks
 	return p
 }
 
@@ -310,10 +320,31 @@ func (m *Model) key(k string) tea.Cmd {
 		return tea.Quit
 	}
 	m.sel.active = false
+	if m.search.prompt {
+		m.searchKey(k)
+		return nil
+	}
 	if m.overlay != overlayNone {
 		return m.overlayKey(k)
 	}
 	switch k {
+	case "/":
+		m.focusTOC = false
+		m.openSearch()
+		return nil
+	case "B":
+		if msg := m.toggleBookmark(m.top); msg != "" {
+			return m.flash(msg)
+		}
+		return nil
+	case "'":
+		m.overlay, m.bmSel = overlayBookmarks, 0
+		return nil
+	case "esc":
+		if m.search.query != "" && !m.focusTOC {
+			m.search = searchState{}
+			return nil
+		}
 	case "q":
 		m.persist()
 		return tea.Quit
@@ -365,9 +396,9 @@ func (m *Model) key(k string) tea.Cmd {
 		m.top++
 	case "k", "up":
 		m.top--
-	case " ", "pgdown", "f":
+	case " ", "pgdown", "f", "l", "right":
 		m.top += page
-	case "b", "pgup":
+	case "b", "pgup", "h", "left":
 		m.top -= page
 	case "ctrl+d":
 		m.top += page / 2
@@ -378,7 +409,13 @@ func (m *Model) key(k string) tea.Cmd {
 	case "G", "end":
 		m.top = len(m.doc.Lines)
 	case "n":
-		m.nextChapter()
+		if m.search.active() {
+			m.stepMatch(1)
+		} else {
+			m.nextChapter()
+		}
+	case "N":
+		m.stepMatch(-1)
 	case "p":
 		m.prevChapter()
 	}
@@ -544,6 +581,7 @@ func (m *Model) View() string {
 		if side {
 			m.contentX += m.tocWidth()
 		}
+		marked := m.markedLines()
 		for i := 0; i < bodyH; i++ {
 			var b strings.Builder
 			if side {
@@ -552,14 +590,19 @@ func (m *Model) View() string {
 				b.WriteString(faint.Render("│"))
 			}
 			if li := m.top + i; li < len(m.doc.Lines) {
-				b.WriteString(margin)
+				if marked[li] && len(margin) >= 2 {
+					b.WriteString(margin[:len(margin)-2] + bookmarkMark() + " ")
+				} else {
+					b.WriteString(margin)
+				}
 				if l := m.doc.Lines[li]; l.Image > 0 && l.ImageRow >= 0 && m.doc.Images[l.Image-1].Rows > 0 {
 					im := m.doc.Images[l.Image-1]
 					b.WriteString(strings.Repeat(" ", im.Pad))
 					b.WriteString(kitty.PlaceholderRow(inlineID(l.Image-1), im.Cols, l.ImageRow))
 				}
 				c0, c1 := m.lineSel(li)
-				b.WriteString(renderLine(m.doc.Lines[li].Spans, c0, c1))
+				hits, cur := m.matchRanges(li)
+				b.WriteString(renderLine(m.doc.Lines[li].Spans, c0, c1, hits, cur))
 			}
 			rows = append(rows, b.String())
 		}
@@ -698,6 +741,9 @@ func (m *Model) status() string {
 		title = m.toc[cur].title
 	}
 	s := fmt.Sprintf("%s · %d%%", title, m.percent())
+	if st := m.searchStatus(); st != "" {
+		s = st
+	}
 	if m.notice != "" {
 		s = m.notice
 	}

@@ -27,6 +27,7 @@ const (
 	overlayMenu
 	overlayHelp
 	overlayImage
+	overlayBookmarks
 )
 
 const menuLabel = "● menu"
@@ -37,6 +38,8 @@ const (
 	menuHelp menuAction = iota
 	menuTOC
 	menuImages
+	menuSearch
+	menuBookmarks
 	menuBack
 	menuQuit
 )
@@ -56,6 +59,8 @@ func (m *Model) menuEntries() []menuEntry {
 	items := []menuEntry{
 		{"keybindings", "?", menuHelp},
 		{toc, "t", menuTOC},
+		{"search", "/", menuSearch},
+		{"bookmarks", "'", menuBookmarks},
 	}
 	if m.doc != nil && len(m.doc.Images) > 0 {
 		items = append(items, menuEntry{"images", "i", menuImages})
@@ -77,10 +82,15 @@ func (m *Model) helpRows() [][2]string {
 	}
 	rows := [][2]string{
 		{"j k  ↓ ↑", "scroll one line"},
-		{"space b", "page down / up"},
+		{"space b  l h  → ←", "page down / up"},
 		{"ctrl+d ctrl+u", "half page down / up"},
 		{"g G", "start / end of book"},
 		{"n p", "next / previous chapter"},
+		{"", ""},
+		{"/", "search (no accents typed = accents ignored)"},
+		{"n N", "next / previous match (esc clears)"},
+		{"B", "bookmark this paragraph"},
+		{"'", "list bookmarks"},
 		{"", ""},
 		{"t", "show / hide contents"},
 		{"tab", "focus contents (enter jumps, esc leaves)"},
@@ -91,7 +101,7 @@ func (m *Model) helpRows() [][2]string {
 		{"drag", "select text, copied when you let go"},
 		{"double-click", "select and copy a paragraph"},
 		{"shift+drag", "the terminal's own selection"},
-		{"click", "contents entry or image"},
+		{"click", "contents entry, image, or left margin (bookmark)"},
 		{"drag │", "resize the contents"},
 		{"", ""},
 	}
@@ -313,6 +323,8 @@ func (m *Model) overlayKey(k string) tea.Cmd {
 		case "esc", "?", "q", "enter":
 			return m.closeOverlay()
 		}
+	case overlayBookmarks:
+		m.bookmarksKey(k)
 	case overlayImage:
 		switch k {
 		case "esc", "q", "i", "enter":
@@ -343,6 +355,10 @@ func (m *Model) activateMenu(i int) tea.Cmd {
 		m.overlay = overlayHelp
 	case menuTOC:
 		return m.key("t")
+	case menuSearch:
+		m.openSearch()
+	case menuBookmarks:
+		m.overlay, m.bmSel = overlayBookmarks, 0
 	case menuImages:
 		idx := m.firstVisibleImage()
 		if idx < 0 {
@@ -481,6 +497,30 @@ func (m *Model) drawOverlay(rows []string) {
 			}
 			lines = append(lines, bold.Render(runewidth.FillRight(r[0], keyW))+"   "+r[1])
 		}
+		// too tall for the screen: put the rows in two columns
+		if body := lines[2:]; len(lines)+4 > m.h && len(body) > 1 {
+			half := (len(body) + 1) / 2
+			for half < len(body) && body[half] != "" { // break at a group boundary
+				half++
+			}
+			left, right := body[:half], body[min(half+1, len(body)):]
+			colW := 0
+			for _, l := range left {
+				colW = max(colW, ansi.StringWidth(l))
+			}
+			merged := lines[:2:2]
+			for i := 0; i < max(len(left), len(right)); i++ {
+				l, r := "", ""
+				if i < len(left) {
+					l = left[i]
+				}
+				if i < len(right) {
+					r = right[i]
+				}
+				merged = append(merged, l+strings.Repeat(" ", colW-ansi.StringWidth(l)+4)+r)
+			}
+			lines = merged
+		}
 		lines = append(lines, "", faint.Render("esc close"))
 		innerW := 0
 		for _, l := range lines {
@@ -488,6 +528,15 @@ func (m *Model) drawOverlay(rows []string) {
 		}
 		innerW = min(innerW, m.w-4)
 		b := box(lines, innerW, -1)
+		m.hit = m.center(rows, b)
+	case overlayBookmarks:
+		innerW := min(m.w-6, 90)
+		lines := m.bookmarkRows(innerW)
+		sel := -1
+		if len(m.bookmarks) > 0 {
+			sel = 2 + m.bmSel
+		}
+		b := box(lines, innerW, sel)
 		m.hit = m.center(rows, b)
 	case overlayImage:
 		var lines []string
@@ -549,6 +598,13 @@ func (m *Model) overlayMouse(msg tea.MouseMsg) tea.Cmd {
 	}
 	if !m.hit.contains(msg.X, msg.Y) {
 		return m.closeOverlay()
+	}
+	if m.overlay == overlayBookmarks {
+		// rows: border, title, blank, then one per bookmark
+		if i := msg.Y - m.hit.y - 3; i >= 0 && i < len(m.bookmarks) {
+			m.overlay = overlayNone
+			m.jumpToBookmark(i)
+		}
 	}
 	return nil
 }

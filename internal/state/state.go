@@ -20,11 +20,19 @@ type Position struct {
 	TOCWidth int  `json:"toc_width,omitempty"` // passed to the UI from Prefs
 	Progress int  `json:"progress,omitempty"`  // percent read
 
+	Bookmarks []Mark `json:"bookmarks,omitempty"`
+
 	// Book details, for the recent list in the book picker.
 	Path   string `json:"path,omitempty"`
 	Title  string `json:"title,omitempty"`
 	Author string `json:"author,omitempty"`
 	Opened int64  `json:"opened,omitempty"` // unix seconds
+}
+
+// Mark is a bookmarked paragraph.
+type Mark struct {
+	Chapter int `json:"chapter"`
+	Block   int `json:"block"`
 }
 
 // Dir is $XDG_STATE_HOME/tome, defaulting to ~/.local/state/tome.

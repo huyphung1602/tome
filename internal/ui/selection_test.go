@@ -68,7 +68,7 @@ func TestDragCopiesCleanText(t *testing.T) {
 	if c0, c1 := m.lineSel(y0 + m.top); c0 >= c1 {
 		t.Error("selection not highlighted")
 	}
-	if got := renderLine(m.doc.Lines[y1+m.top].Spans, 0, 2); !strings.Contains(got, "la") {
+	if got := renderLine(m.doc.Lines[y1+m.top].Spans, 0, 2, nil, nil); !strings.Contains(got, "la") {
 		t.Errorf("renderLine dropped text: %q", got)
 	}
 }
@@ -128,7 +128,7 @@ func TestMenuEntriesDependOnContext(t *testing.T) {
 		}
 		return strings.Join(l, ",")
 	}
-	if got := labels(); got != "keybindings=?,hide contents=t,images=i,quit=q" {
+	if got := labels(); got != "keybindings=?,hide contents=t,search=/,bookmarks=',images=i,quit=q" {
 		t.Errorf("standalone menu = %s", got)
 	}
 	m.SetBookList(true)
@@ -140,7 +140,7 @@ func TestMenuEntriesDependOnContext(t *testing.T) {
 		t.Errorf("menu view:\n%s", v)
 	}
 	// quit from the menu leaves the whole app when opened from the list
-	keys(m, runes("jjjj"), tea.KeyMsg{Type: tea.KeyEnter})
+	keys(m, runes("jjjjjjjj"), tea.KeyMsg{Type: tea.KeyEnter})
 	if !m.QuitAll() {
 		t.Error("menu quit should quit the app")
 	}

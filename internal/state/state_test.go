@@ -3,19 +3,20 @@ package state
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
 func TestSaveLoadRoundTrip(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested")
-	if got := Load(dir, "k"); got != (Position{}) {
+	if got := Load(dir, "k"); !reflect.DeepEqual(got, Position{}) {
 		t.Fatalf("empty load = %+v", got)
 	}
-	want := Position{Chapter: 3, Block: 42, HideTOC: true}
+	want := Position{Chapter: 3, Block: 42, HideTOC: true, Bookmarks: []Mark{{1, 2}, {3, 4}}}
 	if err := Save(dir, "k", want); err != nil {
 		t.Fatal(err)
 	}
-	if got := Load(dir, "k"); got != want {
+	if got := Load(dir, "k"); !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v want %+v", got, want)
 	}
 }

@@ -22,6 +22,7 @@ type selection struct {
 	active, dragging bool
 	anchor, head     cellPos
 	pressAt          time.Time
+	pressX           int
 	lastClick        time.Time // last press+release without a drag
 	lastClickPos     cellPos
 }
@@ -74,36 +75,62 @@ func (m *Model) lineSel(li int) (c0, c1 int) {
 	return c0, c1
 }
 
-// renderLine draws spans, reversing the columns [c0, c1).
-func renderLine(spans []render.Span, c0, c1 int) string {
-	if c0 >= c1 {
+// renderLine draws spans. Columns in [c0, c1) are reversed (selection),
+// columns in matches are underlined (search hits), and columns in current
+// are reversed and bold (the current hit).
+func renderLine(spans []render.Span, c0, c1 int, matches, current [][2]int) string {
+	if c0 >= c1 && len(matches) == 0 && len(current) == 0 {
 		var b strings.Builder
 		for _, s := range spans {
 			b.WriteString(styleFor(s.Style).Render(s.Text))
 		}
 		return b.String()
 	}
+	in := func(col int, rs [][2]int) bool {
+		for _, r := range rs {
+			if col >= r[0] && col < r[1] {
+				return true
+			}
+		}
+		return false
+	}
+	// 0 plain, 1 match, 2 current, 3 selected
+	kind := func(col int) int {
+		switch {
+		case col >= c0 && col < c1:
+			return 3
+		case in(col, current):
+			return 2
+		case in(col, matches):
+			return 1
+		}
+		return 0
+	}
 	var b strings.Builder
 	col := 0
 	for _, s := range spans {
 		var run strings.Builder
-		runSel := false
+		runKind := -1
 		flush := func() {
 			if run.Len() == 0 {
 				return
 			}
 			st := styleFor(s.Style)
-			if runSel {
+			switch runKind {
+			case 1:
+				st = st.Underline(true)
+			case 2:
+				st = st.Reverse(true).Bold(true)
+			case 3:
 				st = st.Reverse(true)
 			}
 			b.WriteString(st.Render(run.String()))
 			run.Reset()
 		}
 		for _, r := range s.Text {
-			sel := col >= c0 && col < c1
-			if sel != runSel {
+			if k := kind(col); k != runKind {
 				flush()
-				runSel = sel
+				runKind = k
 			}
 			run.WriteRune(r)
 			col += runewidth.RuneWidth(r)
@@ -242,6 +269,10 @@ func (m *Model) selectMouse(msg tea.MouseMsg) (cmd tea.Cmd, handled bool) {
 			// a plain click: remember it so the next press can be a double-click
 			m.sel.active = false
 			m.sel.lastClick, m.sel.lastClickPos = m.sel.pressAt, m.sel.anchor
+			// a click (not a drag) in the left margin toggles a bookmark
+			if m.sel.pressX < m.contentX && !m.doc.Lines[m.sel.anchor.line].Blank() {
+				return m.flash(m.toggleBookmark(m.sel.anchor.line)), true
+			}
 			return nil, true
 		}
 		return m.copySelection(), true
@@ -253,7 +284,7 @@ func (m *Model) selectMouse(msg tea.MouseMsg) (cmd tea.Cmd, handled bool) {
 			m.selectBlock(p.line)
 			return m.copySelection(), true
 		}
-		m.sel = selection{active: true, dragging: true, anchor: p, head: p, pressAt: now,
+		m.sel = selection{active: true, dragging: true, anchor: p, head: p, pressAt: now, pressX: msg.X,
 			lastClick: m.sel.lastClick, lastClickPos: m.sel.lastClickPos}
 		return nil, true
 	}
