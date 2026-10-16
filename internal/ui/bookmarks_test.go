@@ -121,7 +121,7 @@ func TestCursorWithoutColorIsHollow(t *testing.T) {
 func TestBookmarksListInBookOrderNotCreationOrder(t *testing.T) {
 	m := New(testBook(), state.Position{HideTOC: true}, nil)
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
-	keys(m, runes("G"), runes("B")) // end of the book first
+	keys(m, runes("G"), runes("B"))             // end of the book first
 	keys(m, runes("g"), runes("}"), runes("B")) // then the start
 	keys(m, runes("n"), runes("B"))             // then the middle
 	var got []int
