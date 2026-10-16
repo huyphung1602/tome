@@ -19,8 +19,10 @@ arm64 | aarch64) arch=arm64 ;;
 *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
 esac
 
-version=${TOME_VERSION:-$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" |
-	sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)}
+# Follow the releases/latest redirect instead of calling the API, which is
+# rate-limited for unauthenticated requests on shared IPs.
+version=${TOME_VERSION:-$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" | sed 's#.*/tag/##')}
+case $version in v*) ;; *) version="" ;; esac
 [ -n "$version" ] || { echo "could not find the latest release of $REPO" >&2; exit 1; }
 
 name="tome_${version#v}_${os}_${arch}"

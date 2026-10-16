@@ -12,6 +12,7 @@ A minimal EPUB reader for the terminal.
 - A book picker that finds every EPUB in your home folder
 - Inline images on [Ghostty](https://ghostty.org)
 - Follows your terminal theme: no colors of its own except theme accents on headings
+- Framed code blocks with syntax highlighting in your theme's colors
 - Select text with the mouse to copy clean paragraphs
 
 ## Install
@@ -24,7 +25,9 @@ curl -fsSL https://raw.githubusercontent.com/huyphung1602/tome/main/scripts/inst
 
 The script downloads the latest release for your OS and CPU, checks its checksum, and installs `tome` to `~/.local/bin`. To install somewhere else, set `TOME_INSTALL_DIR`; to install a specific version, set `TOME_VERSION=v0.1.0`.
 
-You can also download an archive from [Releases](https://github.com/huyphung1602/tome/releases) and put `tome` (or `tome.exe` on Windows) on your `PATH`.
+You can also download an archive from [Releases](https://github.com/huyphung1602/tome/releases) and put `tome` (or `tome.exe` on Windows) on your `PATH`. If macOS refuses to open a binary downloaded with a browser, run `xattr -d com.apple.quarantine tome` once.
+
+To update, run the install script again. To uninstall, delete the binary (`rm ~/.local/bin/tome`) and, optionally, your saved positions (`rm -r ~/.local/state/tome`).
 
 If you have Go 1.26 or later:
 
