@@ -148,19 +148,21 @@ func (m *Model) selectedText() string {
 			continue
 		}
 		c0, c1 := m.lineSel(li)
-		seg := cutCols(l.Plain(), c0, c1)
+		seg := cutCols(l.Plain(), max(c0, l.Gutter), c1)
 		if !l.Pre {
 			seg = strings.TrimSpace(seg)
 			for strings.HasPrefix(seg, "│") {
 				seg = strings.TrimSpace(strings.TrimPrefix(seg, "│"))
 			}
 		}
-		if seg == "" {
+		if seg == "" && !l.Pre {
 			continue
 		}
 		block := [2]int{l.Chapter, l.Block}
 		if out.Len() > 0 {
 			switch {
+			case l.Cont:
+				// wrapped code line: same source line
 			case block != prev && blank:
 				out.WriteString("\n\n")
 			case block != prev || l.Pre:

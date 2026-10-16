@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattn/go-runewidth"
+
 	"github.com/huyphung1602/tome/internal/epub"
 )
 
@@ -85,7 +87,7 @@ func TestPreAndBrAndImg(t *testing.T) {
 	d := one(`<pre>
   x = 1
   y  = 2</pre><p>line1<br/>line2</p><img alt="cat"/>`, 20)
-	want := "  x = 1\n  y  = 2\n\nline1\nline2\n\n[Image: cat]"
+	want := "╭───────────────────\n│   x = 1\n│   y  = 2\n╰───────────────────\n\nline1\nline2\n\n[Image: cat]"
 	if got := plain(d); got != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
 	}
@@ -253,5 +255,110 @@ func TestConsecutiveH1sShareOneRule(t *testing.T) {
 	want := "x\n\n\n          Chapter 5\n\n      Information Hiding\n      ──────────────────\n\nbody"
 	if got := plain(d); got != want {
 		t.Errorf("got\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestCodeBlockFrameHighlightAndWrap(t *testing.T) {
+	d := one(`<p>see</p><pre><code class="language-go">// add two
+func add(a, b int) int { return a + b + 42 } // a long line that has to wrap
+s := "hi"</code></pre><p>after <code>x := 1</code> here</p>`, 40)
+	lines := strings.Split(plain(d), "\n")
+	if !strings.HasPrefix(lines[2], "╭─ go ─") || runewidth.StringWidth(lines[2]) != 40 {
+		t.Errorf("top = %q", lines[2])
+	}
+	if !strings.HasPrefix(lines[3], "│ // add two") || !strings.HasPrefix(lines[5], "│ ↪ ") {
+		t.Errorf("code lines:\n%s", strings.Join(lines[2:9], "\n"))
+	}
+	var kw, str, num, comment, inline bool
+	for _, l := range d.Lines {
+		for _, s := range l.Spans {
+			switch {
+			case s.Text == "func" && s.Style&CodeKeyword != 0:
+				kw = true
+			case s.Text == `"hi"` && s.Style&CodeString != 0:
+				str = true
+			case s.Text == "42" && s.Style&CodeNumber != 0:
+				num = true
+			case strings.HasPrefix(s.Text, "// add") && s.Style&Faint != 0:
+				comment = true
+			case s.Text == "x := 1" && s.Style&CodeString != 0:
+				inline = true
+			}
+		}
+	}
+	if !kw || !str || !num || !comment || !inline {
+		t.Errorf("highlight kw=%v str=%v num=%v comment=%v inline=%v", kw, str, num, comment, inline)
+	}
+	for _, l := range d.Lines {
+		if strings.HasPrefix(l.Plain(), "│") && l.Gutter < 2 {
+			t.Errorf("gutter not marked on %q", l.Plain())
+		}
+	}
+}
+
+func TestCodeLanguageHints(t *testing.T) {
+	for html, want := range map[string]string{
+		`<pre class="brush: java;">class A {}</pre>`:        "java",
+		`<pre data-lang="python">print(1)</pre>`:            "python",
+		`<pre><code class="lang-js">let a = 1</code></pre>`: "javascript",
+		`<pre class="programlisting">roses are red</pre>`:   "",
+	} {
+		d := one(html, 40)
+		top := d.Lines[0].Plain()
+		if want == "" {
+			if strings.Contains(top, "─ ") {
+				t.Errorf("%s: unexpected label in %q", html, top)
+			}
+		} else if !strings.Contains(top, "─ "+want+" ") {
+			t.Errorf("%s: top %q, want label %q", html, top, want)
+		}
+	}
+}
+
+func TestIdentifiersStayPlain(t *testing.T) {
+	d := one(`<pre class="language-go">x := len(items)</pre>`, 40)
+	for _, l := range d.Lines {
+		for _, s := range l.Spans {
+			if strings.TrimSpace(s.Text) == "x" && s.Style != 0 {
+				t.Errorf("identifier styled %b", s.Style)
+			}
+		}
+	}
+}
+
+func TestPygmentsClassesAndNoGuessing(t *testing.T) {
+	d := one(`<pre class="calibre9"><code class="k">class</code> Terrain {
+  <code class="kt">int</code> x = <code class="mi">42</code>; <code class="c1">// note</code>
+}</pre><pre>class Guess { public: int x; };</pre>`, 50)
+	styles := map[string]Style{}
+	for _, l := range d.Lines {
+		for _, s := range l.Spans {
+			styles[strings.TrimSpace(s.Text)] = s.Style
+		}
+	}
+	if styles["class"] != CodeKeyword || styles["int"] != CodeType || styles["42"] != CodeNumber || styles["// note"] != Faint|Italic {
+		t.Errorf("pygments styles = %+v", styles)
+	}
+	if st := styles["class Guess { public: int x; };"]; st != 0 {
+		t.Errorf("unhinted code was highlighted: %b", st)
+	}
+	if !strings.Contains(plain(d), "│ class Terrain {") || !strings.Contains(plain(d), "│   int x = 42; // note") {
+		t.Errorf("text changed:\n%s", plain(d))
+	}
+}
+
+func TestCodeKeepsAuthorEmphasis(t *testing.T) {
+	d := one(`<pre class="programlisting">function <b class="bold">dinner</b>(food) {
+  <i>return</i> food;
+}</pre>`, 50)
+	var bold, italic bool
+	for _, l := range d.Lines {
+		for _, s := range l.Spans {
+			bold = bold || s.Text == "dinner" && s.Style&Bold != 0
+			italic = italic || s.Text == "return" && s.Style&Italic != 0
+		}
+	}
+	if !bold || !italic {
+		t.Errorf("emphasis lost: bold=%v italic=%v\n%s", bold, italic, plain(d))
 	}
 }

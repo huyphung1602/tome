@@ -479,6 +479,11 @@ var headingColors = map[render.Style]lipgloss.Color{
 	render.H1: "5", // magenta
 	render.H2: "4", // blue
 	render.H3: "6", // cyan
+
+	render.CodeKeyword: "4", // blue
+	render.CodeString:  "2", // green (also inline code)
+	render.CodeNumber:  "6", // cyan
+	render.CodeType:    "5", // magenta
 }
 
 // noColor honors https://no-color.org.

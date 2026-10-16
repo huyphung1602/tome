@@ -37,6 +37,18 @@ Many books (Calibre, InDesign exports) style headings with classes on `<p>` inst
 - `display: none` → hidden.
 - `font-size` on a `p` or `div`: 1.6em or larger is treated as `h1`, 1.3em or larger as `h2`, and 1.15em or larger and bold as `h3`.
 
+## Code blocks (`render/code.go`)
+
+A `<pre>` is drawn in a dim frame. The top edge shows the language when it's known, every line starts with a `│ ` gutter, and long lines wrap with a `↪` marker. When text is copied, the frame, gutter and markers are dropped and wrapped lines are rejoined, so code comes out exactly as written.
+
+Highlighting, in order of preference:
+
+1. **Pygments token classes** in the markup (`k`, `kt`, `c1`, `s2`, `mi`, …). Many technical books keep these from their source, so they give the publisher's own highlighting.
+2. **A language hint** (`language-x`, `lang-x`, `brush: x`, `data-lang`): the code is tokenised with chroma.
+3. **Otherwise no colors.** tome doesn't guess the language from the code. In testing, guessing read C++ as GDScript, and wrong colors are worse than none.
+
+The author's own `<b>`/`<i>` emphasis and bold or italic CSS classes inside listings are kept. Token kinds map to ANSI palette colors: keywords blue, strings and inline `<code>` green, numbers cyan, types magenta, and comments dim italic.
+
 ## Images (`internal/kitty`)
 
 At startup, tome sends three queries to the terminal through `/dev/tty`: a kitty graphics query, `CSI 16 t` for the cell size in pixels, and DA1. Every terminal answers DA1, so tome stops reading as soon as that reply arrives instead of waiting for a timeout.

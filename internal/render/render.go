@@ -15,7 +15,7 @@ import (
 	"github.com/huyphung1602/tome/internal/epub"
 )
 
-type Style uint8
+type Style uint16
 
 const (
 	Bold Style = 1 << iota
@@ -26,6 +26,11 @@ const (
 	H1
 	H2
 	H3
+	// Code token kinds, also shown in theme colors. Inline <code> uses CodeString.
+	CodeKeyword
+	CodeString
+	CodeNumber
+	CodeType
 )
 
 type Span struct {
@@ -42,7 +47,9 @@ type Line struct {
 	Image    int  // 1-based index into Doc.Images when this line shows an image
 	ImageRow int  // row of the image drawn on this line (inline images)
 	Pre      bool // preformatted: keep line breaks and spacing when copying
-	Deco     bool // decoration only (heading rule): left out when copying
+	Deco     bool // decoration only (heading rule, code frame): left out when copying
+	Gutter   int  // leading columns that are decoration (code gutter), dropped when copying
+	Cont     bool // continues the previous line (wrapped code): joined without a newline
 }
 
 // Blank reports whether the line is an empty separator.
@@ -161,7 +168,6 @@ type renderer struct {
 	style        Style
 	frames       []frame
 	lists        []int // per open list: -1 unordered, else next number
-	pre          int
 	liDepth      int
 	pendingBlank bool
 	pendingIDs   []string
@@ -175,7 +181,7 @@ func (r *renderer) blank() {
 }
 
 func (r *renderer) text(s string) {
-	if r.pre == 0 {
+	{
 		var sb strings.Builder
 		space := false
 		for _, c := range s {
@@ -216,12 +222,7 @@ func (r *renderer) flush(center bool) {
 	}
 	r.startBlock()
 	avail := r.avail()
-	var rows [][]Span
-	if r.pre > 0 {
-		rows = wrapPre(r.cur, avail)
-	} else {
-		rows = wrapWords(r.cur, avail)
-	}
+	rows := wrapWords(r.cur, avail)
 	for i, row := range rows {
 		var spans []Span
 		for fi := range r.frames {
@@ -238,7 +239,7 @@ func (r *renderer) flush(center bool) {
 			}
 		}
 		spans = append(spans, row...)
-		r.doc.Lines = append(r.doc.Lines, Line{Spans: merge(spans), Chapter: r.chapter, Block: r.block, Image: r.imageRef, Pre: r.pre > 0})
+		r.doc.Lines = append(r.doc.Lines, Line{Spans: merge(spans), Chapter: r.chapter, Block: r.block, Image: r.imageRef})
 	}
 	for fi := range r.frames {
 		r.frames[fi].used = true
@@ -501,13 +502,9 @@ func (r *renderer) walk(n *html.Node) {
 		r.liDepth--
 		r.frames = r.frames[:len(r.frames)-1]
 	case "pre":
-		r.flush(false)
-		r.pendingBlank = true
-		r.pre++
-		children()
-		r.flush(false)
-		r.pre--
-		r.pendingBlank = true
+		r.codeBlock(n)
+	case "code", "kbd", "samp", "tt":
+		withStyle(CodeString)
 	case "div", "section", "article", "main", "header", "footer", "aside", "nav",
 		"body", "html", "table", "tbody", "thead", "tr",
 		"dl", "dt", "dd", "address", "center":
@@ -736,31 +733,4 @@ func trimEmpty(rows [][]Span) [][]Span {
 		rows = rows[:len(rows)-1]
 	}
 	return rows
-}
-
-func wrapPre(spans []Span, width int) [][]Span {
-	var rows [][]Span
-	var line []Span
-	lineW := 0
-	for _, s := range spans {
-		for _, r := range s.Text {
-			if r == '\n' {
-				rows = append(rows, merge(line))
-				line, lineW = nil, 0
-				continue
-			}
-			if r == '\t' {
-				r = ' '
-			}
-			rw := runewidth.RuneWidth(r)
-			if lineW+rw > width {
-				rows = append(rows, merge(line))
-				line, lineW = nil, 0
-			}
-			line = append(line, Span{string(r), s.Style})
-			lineW += rw
-		}
-	}
-	rows = append(rows, merge(line))
-	return trimEmpty(rows)
 }

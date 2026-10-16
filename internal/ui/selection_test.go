@@ -177,3 +177,20 @@ func TestClickAnywhereClearsSelection(t *testing.T) {
 		t.Error("scrolling cleared the selection")
 	}
 }
+
+func TestCopyWrappedCodeRejoinsLines(t *testing.T) {
+	long := strings.Repeat("x", 50)
+	b := &epub.Book{Chapters: []epub.Chapter{{Path: "c.html", HTML: []byte(
+		"<pre>  short\n  " + long + "\nend</pre>")}}}
+	var copied string
+	m := New(b, state.Position{HideTOC: true}, nil)
+	m.SetClipboard(func(s string) error { copied = s; return nil })
+	m.Update(tea.WindowSizeMsg{Width: 40, Height: 30})
+	m.View()
+	_, y0 := screen(t, m, "short")
+	_, y1 := screen(t, m, "end")
+	drag(m, 0, y0-1, m.w-1, y1+1)
+	if want := "  short\n  " + long + "\nend"; copied != want {
+		t.Errorf("copied %q\nwant   %q", copied, want)
+	}
+}
