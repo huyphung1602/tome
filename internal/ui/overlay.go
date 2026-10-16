@@ -81,15 +81,16 @@ func (m *Model) helpRows() [][2]string {
 		quit = [][2]string{{"q", "save position, back to book list"}, {"ctrl+c", "quit tome"}}
 	}
 	rows := [][2]string{
-		{"j k  ↓ ↑", "scroll one line"},
+		{"j k  ↓ ↑", "move the cursor (dim ◆); the page scrolls at the edges"},
 		{"space b  l h  → ←", "page down / up"},
-		{"ctrl+d ctrl+u", "half page down / up"},
+		{"ctrl+d ctrl+u", "half page down / up (cursor comes along)"},
 		{"g G", "start / end of book"},
 		{"n p", "next / previous chapter"},
 		{"", ""},
 		{"/", "search (no accents typed = accents ignored)"},
 		{"n N", "next / previous match (esc clears)"},
-		{"B", "bookmark this paragraph"},
+		{"{ }", "previous / next paragraph"},
+		{"B", "bookmark / unbookmark the cursor's paragraph"},
 		{"'", "list bookmarks"},
 		{"", ""},
 		{"t", "show / hide contents"},
@@ -101,7 +102,7 @@ func (m *Model) helpRows() [][2]string {
 		{"drag", "select text, copied when you let go"},
 		{"double-click", "select and copy a paragraph"},
 		{"shift+drag", "the terminal's own selection"},
-		{"click", "contents entry, image, or left margin (bookmark)"},
+		{"click", "move the cursor; contents entry, image, left margin (bookmark)"},
 		{"drag │", "resize the contents"},
 		{"", ""},
 	}
@@ -499,9 +500,16 @@ func (m *Model) drawOverlay(rows []string) {
 		}
 		// too tall for the screen: put the rows in two columns
 		if body := lines[2:]; len(lines)+4 > m.h && len(body) > 1 {
+			// break at the group boundary (blank row) closest to the middle
 			half := (len(body) + 1) / 2
-			for half < len(body) && body[half] != "" { // break at a group boundary
-				half++
+			best := -1
+			for i, l := range body {
+				if l == "" && (best < 0 || abs(i-half) < abs(best-half)) {
+					best = i
+				}
+			}
+			if best > 0 {
+				half = best
 			}
 			left, right := body[:half], body[min(half+1, len(body)):]
 			colW := 0
@@ -633,4 +641,11 @@ func wrapPlain(s string, width int) []string {
 		rows = append(rows, line)
 	}
 	return rows
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
 }

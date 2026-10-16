@@ -205,6 +205,7 @@ func (m *Model) showMatch() {
 		m.top = line - m.bodyH()/3
 		m.clamp()
 	}
+	m.caret = line
 }
 
 func (m *Model) stepMatch(d int) {

@@ -108,3 +108,12 @@ func TestGutterMarkWhenParagraphStartsAboveScreen(t *testing.T) {
 		t.Error("no mark when the paragraph began above the screen")
 	}
 }
+
+func TestCursorWithoutColorIsHollow(t *testing.T) {
+	old := noColor
+	noColor = true
+	defer func() { noColor = old }()
+	if cursorMark() == bookmarkMark() || !strings.Contains(cursorMark(), "◇") {
+		t.Errorf("cursor %q vs bookmark %q", cursorMark(), bookmarkMark())
+	}
+}

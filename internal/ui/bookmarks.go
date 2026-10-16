@@ -21,6 +21,24 @@ func bookmarkMark() string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render("◆")
 }
 
+// bookmarkCursorMark is the cursor sitting on a bookmark's mark.
+func bookmarkCursorMark() string {
+	if noColor {
+		return bold.Render("◆")
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true).Render("◆")
+}
+
+// cursorMark is the line cursor: the bookmark diamond, dimmed, so it reads
+// as "B would bookmark this paragraph". Without color it's a hollow diamond
+// so it can't be mistaken for a bookmark.
+func cursorMark() string {
+	if noColor {
+		return faint.Render("◇")
+	}
+	return faint.Render("◆")
+}
+
 // Bookmarks mark paragraphs, the same unit the reading position uses, so
 // they stay put when the text re-wraps.
 
@@ -61,13 +79,12 @@ func (m *Model) toggleBookmark(li int) string {
 // bookmarkLine is the first line of a bookmarked paragraph.
 func (m *Model) bookmarkLine(mk state.Mark) int { return m.doc.Locate(mk.Chapter, mk.Block) }
 
-// markedLines are the lines that get a gutter mark: the first visible
-// line of each bookmarked paragraph, even when it started above the screen.
-func (m *Model) markedLines() map[int]bool {
-	out := map[int]bool{}
-	if len(m.bookmarks) == 0 {
-		return out
-	}
+// gutterMarks maps screen lines to the mark drawn in the gutter: a red
+// diamond on the first visible line of each bookmarked paragraph, and the
+// dim cursor diamond on the cursor's line (a bold red one when the cursor
+// is on a bookmark's mark, so B would remove it).
+func (m *Model) gutterMarks() map[int]string {
+	out := map[int]string{}
 	seen := map[state.Mark]bool{}
 	for li := m.top; li < min(len(m.doc.Lines), m.top+m.bodyH()); li++ {
 		l := m.doc.Lines[li]
@@ -76,18 +93,41 @@ func (m *Model) markedLines() map[int]bool {
 		}
 		mk := state.Mark{Chapter: l.Chapter, Block: l.Block}
 		if !seen[mk] && m.isBookmarked(mk) {
-			out[li] = true
+			out[li] = bookmarkMark()
 		}
 		seen[mk] = true
 	}
+	if m.caret >= m.top && m.caret < m.top+m.bodyH() {
+		if _, marked := out[m.caret]; marked {
+			out[m.caret] = bookmarkCursorMark()
+		} else {
+			out[m.caret] = cursorMark()
+		}
+	}
 	return out
+}
+
+// blockSpan is the [start, end) line range of the paragraph mk.
+func (m *Model) blockSpan(mk state.Mark) (int, int) {
+	start := m.doc.Locate(mk.Chapter, mk.Block)
+	end := start
+	for end < len(m.doc.Lines) {
+		l := m.doc.Lines[end]
+		if l.Chapter != mk.Chapter || l.Block != mk.Block {
+			break
+		}
+		end++
+	}
+	return start, end
 }
 
 func (m *Model) jumpToBookmark(i int) {
 	if i < 0 || i >= len(m.bookmarks) {
 		return
 	}
-	m.jump(max(0, m.bookmarkLine(m.bookmarks[i])-2)) // a little context above
+	li := m.bookmarkLine(m.bookmarks[i])
+	m.jump(max(0, li-2)) // a little context above
+	m.setCursor(li)
 }
 
 // chapterTitleAt is the TOC entry title that covers line li.

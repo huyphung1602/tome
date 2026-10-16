@@ -49,12 +49,13 @@ In the book picker, type to filter by title, author or file name (accents are ig
 
 | Key | Action |
 |---|---|
-| `j` `k` / `↓` `↑` | scroll |
+| `j` `k` / `↓` `↑` | move the cursor (a dim ◆ in the margin); the page scrolls at the edges |
 | `space` `b`, `l` `h`, `→` `←` | page down / up |
 | `g` `G` | start / end |
 | `n` `p` | next / previous chapter |
 | `/` | search; then `n` `N` for next / previous match, `esc` to clear |
-| `B` | bookmark the paragraph at the top of the screen |
+| `{` `}` | previous / next paragraph |
+| `B` | bookmark or unbookmark the paragraph the cursor is in |
 | `'` | list bookmarks (`enter` jumps, `d` deletes) |
 | `t` | show / hide contents |
 | `tab` | focus contents (`enter` jumps) |

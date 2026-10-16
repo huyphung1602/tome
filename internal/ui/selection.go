@@ -270,6 +270,7 @@ func (m *Model) selectMouse(msg tea.MouseMsg) (cmd tea.Cmd, handled bool) {
 			m.sel.active = false
 			m.sel.lastClick, m.sel.lastClickPos = m.sel.pressAt, m.sel.anchor
 			// a click (not a drag) in the left margin toggles a bookmark
+			m.setCursor(m.sel.anchor.line) // a click moves the cursor, like vim
 			if m.sel.pressX < m.contentX && !m.doc.Lines[m.sel.anchor.line].Blank() {
 				return m.flash(m.toggleBookmark(m.sel.anchor.line)), true
 			}

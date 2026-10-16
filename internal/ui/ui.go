@@ -79,6 +79,7 @@ type Model struct {
 	search    searchState
 	bookmarks []state.Mark
 	bmSel     int
+	caret     int // cursor line in the text (vim-style); B bookmarks its paragraph
 }
 
 // isMouseFragment spots the tail of a mouse escape sequence (e.g.
@@ -176,6 +177,7 @@ func (m *Model) layout() {
 		m.top = m.doc.Locate(pos.Chapter, pos.Block)
 	}
 	m.clamp()
+	m.setCursor(m.top)
 	if m.search.query != "" { // line numbers changed: find the hits again
 		cur := m.search.cur
 		m.search.matches = m.findMatches(m.search.query)
@@ -230,6 +232,7 @@ func (m *Model) jump(line int) {
 	}
 	m.top = line
 	m.clamp()
+	m.setCursor(line)
 	m.persist()
 }
 
@@ -333,9 +336,13 @@ func (m *Model) key(k string) tea.Cmd {
 		m.openSearch()
 		return nil
 	case "B":
-		if msg := m.toggleBookmark(m.top); msg != "" {
-			return m.flash(msg)
+		return m.flash(m.toggleBookmark(m.caret))
+	case "{", "}":
+		d := 1
+		if k == "{" {
+			d = -1
 		}
+		m.paragraphMotion(d)
 		return nil
 	case "'":
 		m.overlay, m.bmSel = overlayBookmarks, 0
@@ -390,24 +397,26 @@ func (m *Model) key(k string) tea.Cmd {
 		return nil
 	}
 
-	page := max(1, m.bodyH()-2)
 	switch k {
 	case "j", "down":
-		m.top++
+		m.moveLine(1)
 	case "k", "up":
-		m.top--
+		m.moveLine(-1)
 	case " ", "pgdown", "f", "l", "right":
-		m.top += page
+		m.page(1)
 	case "b", "pgup", "h", "left":
-		m.top -= page
+		m.page(-1)
 	case "ctrl+d":
-		m.top += page / 2
+		m.halfPage(1)
 	case "ctrl+u":
-		m.top -= page / 2
+		m.halfPage(-1)
 	case "g", "home":
 		m.top = 0
+		m.caret = m.snap(0, 1)
 	case "G", "end":
 		m.top = len(m.doc.Lines)
+		m.clamp()
+		m.caret = m.snap(len(m.doc.Lines)-1, -1)
 	case "n":
 		if m.search.active() {
 			m.stepMatch(1)
@@ -456,8 +465,7 @@ func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 		if inTOC {
 			m.tocTop = max(0, m.tocTop+d) // clamped when drawn
 		} else if !overlay {
-			m.top += d
-			m.clamp()
+			m.scrollView(d)
 		}
 	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft:
 		switch {
@@ -581,7 +589,7 @@ func (m *Model) View() string {
 		if side {
 			m.contentX += m.tocWidth()
 		}
-		marked := m.markedLines()
+		marks := m.gutterMarks()
 		for i := 0; i < bodyH; i++ {
 			var b strings.Builder
 			if side {
@@ -590,8 +598,8 @@ func (m *Model) View() string {
 				b.WriteString(faint.Render("│"))
 			}
 			if li := m.top + i; li < len(m.doc.Lines) {
-				if marked[li] && len(margin) >= 2 {
-					b.WriteString(margin[:len(margin)-2] + bookmarkMark() + " ")
+				if mark, ok := marks[li]; ok && len(margin) >= 2 {
+					b.WriteString(margin[:len(margin)-2] + mark + " ")
 				} else {
 					b.WriteString(margin)
 				}

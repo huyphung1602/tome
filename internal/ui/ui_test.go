@@ -42,8 +42,8 @@ func TestBatchedRunesAreSeparateKeys(t *testing.T) {
 	m := New(testBook(), state.Position{}, nil)
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
 	keys(m, runes("jjj"))
-	if m.top != 3 {
-		t.Errorf("top = %d want 3", m.top)
+	if strings.TrimSpace(m.doc.Lines[m.caret].Plain()) != "c0 para 2" { // heading, rule skipped, para 0, 1, 2
+		t.Errorf("caret on %q, want three text lines down", m.doc.Lines[m.caret].Plain())
 	}
 }
 
@@ -235,9 +235,10 @@ func TestSplitMouseSequencesAreNotKeys(t *testing.T) {
 		t.Errorf("fragments acted as keys: width %d->%d top %d->%d", w, m.sideW, top, m.top)
 	}
 	// real keys still work, including a lone "<" and fast "jjj"
+	caret := m.caret
 	keys(m, runes("<"), runes("jjj"))
-	if m.sideW != w-2 || m.top != top+3 {
-		t.Errorf("real keys: width %d top %d", m.sideW, m.top)
+	if m.sideW != w-2 || m.caret == caret {
+		t.Errorf("real keys: width %d caret %d", m.sideW, m.caret)
 	}
 }
 
