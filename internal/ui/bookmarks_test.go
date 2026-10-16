@@ -117,3 +117,28 @@ func TestCursorWithoutColorIsHollow(t *testing.T) {
 		t.Errorf("cursor %q vs bookmark %q", cursorMark(), bookmarkMark())
 	}
 }
+
+func TestBookmarksListInBookOrderNotCreationOrder(t *testing.T) {
+	m := New(testBook(), state.Position{HideTOC: true}, nil)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
+	keys(m, runes("G"), runes("B")) // end of the book first
+	keys(m, runes("g"), runes("}"), runes("B")) // then the start
+	keys(m, runes("n"), runes("B"))             // then the middle
+	var got []int
+	for _, mk := range m.bookmarks {
+		got = append(got, m.bookmarkLine(mk))
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i] < got[i-1] {
+			t.Fatalf("bookmarks out of book order: lines %v", got)
+		}
+	}
+	if len(got) != 3 {
+		t.Fatalf("bookmarks = %v", got)
+	}
+	keys(m, runes("'"))
+	v := m.View()
+	if a, b := strings.Index(v, "Chapter 0"), strings.Index(v, "Chapter 2"); a < 0 || b < 0 || a > b {
+		t.Errorf("list not in book order:\n%s", v)
+	}
+}
