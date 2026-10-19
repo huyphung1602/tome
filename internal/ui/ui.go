@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -19,12 +20,27 @@ import (
 	"github.com/huyphung1602/tome/internal/state"
 )
 
+// gutterW is the margin left of the text that holds the cursor / bookmark
+// mark; sideGap is the space between the sidebar border and that margin.
+// statusGap is the number of blank rows between the text and the bars
+// above (buttons) and below (chapter, progress) it.
 const (
-	maxColumn  = 72
-	minContent = 64 // terminal columns the reading area needs beside the sidebar
-	defaultTOC = 36 // sidebar width including the right border
-	minTOC     = 20
-	maxTOC     = 70
+	gutterW   = 2
+	sideGap   = 3
+	statusGap = 2
+)
+
+const (
+	maxColumn = 72
+	// reading height: the frame is at most this many text rows, centered
+	// vertically; fullHeight means "use the whole terminal".
+	defaultHeight = 36
+	minHeight     = 10
+	fullHeight    = 1000
+	minContent    = 64 // terminal columns the reading area needs beside the sidebar
+	defaultTOC    = 36 // sidebar width including the right border
+	minTOC        = 20
+	maxTOC        = 70
 )
 
 type tocItem struct {
@@ -62,8 +78,13 @@ type Model struct {
 	hit          rect      // screen area of the open overlay box
 	gfx          io.Writer // kitty graphics output; nil disables images
 	cellW, cellH int       // terminal cell size in pixels
-	inline       bool      // draw images in the reading column
-	layoutH      int       // height the doc was laid out for (inline images depend on it)
+	maxH         int       // preferred reading height in rows (fullHeight = no limit)
+	dragL        int       // group's left edge, frozen while the sidebar border is dragged
+	keysX, menuX int       // status-line buttons, set when the status line is drawn
+	tocBtnX      int
+	initCmd      tea.Cmd
+	inline       bool // draw images in the reading column
+	layoutH      int  // height the doc was laid out for (inline images depend on it)
 	imgSize      map[string][2]int
 	sent         map[int][2]int // inline image index -> cols, rows transmitted
 	quitAll      bool           // ctrl+c: leave the app, not just this book
@@ -112,6 +133,10 @@ func (m *Model) QuitAll() bool { return m.quitAll }
 
 func New(book *epub.Book, pos state.Position, save func(state.Position)) *Model {
 	m := &Model{book: book, save: save, showTOC: !pos.HideTOC, restore: &pos, lastSel: -2, bookmarks: pos.Bookmarks}
+	m.maxH = defaultHeight
+	if pos.ReadHeight > 0 {
+		m.maxH = max(minHeight, pos.ReadHeight)
+	}
 	m.sideW = defaultTOC
 	if pos.TOCWidth > 0 {
 		m.sideW = max(minTOC, min(maxTOC, pos.TOCWidth))
@@ -122,9 +147,58 @@ func New(book *epub.Book, pos state.Position, save func(state.Position)) *Model 
 	return m
 }
 
-func (m *Model) Init() tea.Cmd { return nil }
+func (m *Model) Init() tea.Cmd { return m.initCmd }
 
-func (m *Model) bodyH() int { return max(1, m.h-1) }
+// ShowHint flashes "press ? for keybinds" when the book opens (first run).
+func (m *Model) ShowHint() { m.initCmd = m.flashFor("press ? for keybinds", 5*time.Second) }
+
+// groupLeft is the left edge of the sidebar + text group, which is
+// centered on the screen as a unit so the contents sit next to the text.
+func (m *Model) groupLeft(side bool) int {
+	if m.dragging {
+		return m.dragL
+	}
+	w := m.colW + gutterW
+	if side {
+		w += m.tocWidth() + sideGap
+	}
+	return max(0, (m.w-w)/2)
+}
+
+// bodyH is the number of text rows in the reading frame.
+func (m *Model) bodyH() int { return max(1, min(m.h-2-2*statusGap, m.maxH)) }
+
+// frameTop is the screen row where the reading frame starts; the frame
+// (text rows plus the status line) is centered vertically.
+func (m *Model) frameTop() int { return max(0, (m.h-m.bodyH()-2-2*statusGap)/2) }
+
+// barY is the screen row of the button bar above the text.
+func (m *Model) barY() int { return m.frameTop() }
+
+// textTop is the screen row of the first line of text.
+func (m *Model) textTop() int { return m.frameTop() + 1 + statusGap }
+
+// statusY is the screen row of the status line, right under the text.
+func (m *Model) statusY() int { return m.textTop() + m.bodyH() + statusGap }
+
+// resizeHeight changes the reading height by d rows; going past the
+// terminal height switches to full height.
+func (m *Model) resizeHeight(d int) tea.Cmd {
+	cur := m.bodyH()
+	switch {
+	case d > 0 && cur+d >= m.h-2-2*statusGap:
+		m.maxH = fullHeight
+	default:
+		m.maxH = max(minHeight, cur+d)
+	}
+	m.layout()
+	m.keepCursorOnScreen()
+	m.persist()
+	if m.maxH == fullHeight {
+		return m.flash("reading height: full screen")
+	}
+	return m.flash(fmt.Sprintf("reading height: %d lines", m.bodyH()))
+}
 
 // tocWidth is the sidebar width that fits now: the preferred width,
 // shrunk so the reading area keeps minContent columns.
@@ -140,7 +214,7 @@ func (m *Model) layout() {
 		avail -= m.tocWidth()
 	}
 	colW := max(20, min(maxColumn, avail-4))
-	if colW == m.colW && m.doc != nil && (!m.inline || m.layoutH == m.h) {
+	if colW == m.colW && m.doc != nil && (!m.inline || m.layoutH == m.bodyH()) {
 		return
 	}
 	pos := m.restore
@@ -150,7 +224,7 @@ func (m *Model) layout() {
 	}
 	m.restore = nil
 	m.colW = colW
-	m.layoutH = m.h
+	m.layoutH = m.bodyH()
 	if m.css == nil {
 		m.css = render.ParseCSS(m.book.CSS)
 	}
@@ -187,7 +261,7 @@ func (m *Model) layout() {
 }
 
 func (m *Model) position() state.Position {
-	p := state.Position{HideTOC: !m.showTOC}
+	p := state.Position{HideTOC: !m.showTOC, ReadHeight: m.maxH}
 	if m.sideW != defaultTOC {
 		p.TOCWidth = m.sideW
 	}
@@ -294,6 +368,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.overlay != overlayNone {
 			return m, m.overlayMouse(msg)
 		}
+		// the reader works in frame coordinates
+		msg.Y -= m.textTop()
 		return m, m.mouse(msg)
 	case tea.KeyMsg:
 		if m.doc == nil {
@@ -374,6 +450,10 @@ func (m *Model) key(k string) tea.Cmd {
 		m.cursor = max(0, m.current())
 		m.lastSel = -2
 		return nil
+	case "-", "_":
+		return m.resizeHeight(-2)
+	case "+", "=":
+		return m.resizeHeight(2)
 	case "<", ">":
 		d := 2
 		if k == "<" {
@@ -441,8 +521,9 @@ func (m *Model) resizeTOC(w int) {
 func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 	side := m.showTOC && m.sideBySide()
 	overlay := m.focusTOC && !m.sideBySide()
-	border := m.tocWidth() - 1
-	inTOC := (side || overlay) && msg.X >= m.tocX && msg.X < m.tocX+m.tocW && msg.Y < m.bodyH()
+	border := m.tocX + m.tocWidth() - 1
+	inBody := msg.Y >= 0 && msg.Y < m.bodyH() // rows above (button bar, gap) are negative
+	inTOC := (side || overlay) && inBody && msg.X >= m.tocX && msg.X < m.tocX+m.tocW
 
 	if m.sel.dragging {
 		cmd, _ := m.selectMouse(msg)
@@ -452,7 +533,7 @@ func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 	case m.dragging:
 		switch msg.Action {
 		case tea.MouseActionMotion:
-			m.resizeTOC(msg.X + 1)
+			m.resizeTOC(msg.X - m.dragL + 1)
 		case tea.MouseActionRelease:
 			m.dragging = false
 			m.persist()
@@ -469,10 +550,14 @@ func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 		}
 	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft:
 		switch {
-		case m.onMenuButton(msg.X, msg.Y):
+		case m.onMenuButton(msg.X, msg.Y+m.textTop()):
 			m.overlay, m.menuSel = overlayMenu, 0
+		case m.onKeysButton(msg.X, msg.Y+m.textTop()):
+			m.overlay = overlayHelp
+		case m.onTOCButton(msg.X, msg.Y+m.textTop()):
+			return m.key("t")
 		case side && msg.X >= border-1 && msg.X <= border+1:
-			m.dragging = true
+			m.dragging, m.dragL = true, m.tocX
 		case inTOC:
 			if idx := m.rowItem[msg.Y]; idx >= 0 {
 				m.cursor = idx
@@ -481,8 +566,10 @@ func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 			}
 		case overlay:
 			m.focusTOC = false
-		case msg.Y < m.bodyH() && m.top+msg.Y < len(m.doc.Lines) && m.doc.Lines[m.top+msg.Y].Image > 0:
+		case inBody && m.top+msg.Y < len(m.doc.Lines) && m.doc.Lines[m.top+msg.Y].Image > 0:
 			return m.openImage(m.doc.Lines[m.top+msg.Y].Image - 1)
+		case !inBody:
+			// the bars and gaps around the text do nothing (yet)
 		default:
 			cmd, _ := m.selectMouse(msg)
 			return cmd
@@ -578,30 +665,29 @@ func (m *Model) View() string {
 	default:
 		side := m.showTOC && m.sideBySide()
 		var sb []string
-		avail := m.w
+		left := m.groupLeft(side)
+		pad := strings.Repeat(" ", left)
+		m.contentX = left + gutterW
 		if side {
-			m.tocX, m.tocW = 0, m.tocWidth()-2
+			m.tocX, m.tocW = left, m.tocWidth()-3
 			sb = m.sidebar(bodyH, m.tocW)
-			avail -= m.tocWidth()
-		}
-		margin := strings.Repeat(" ", max(0, (avail-m.colW)/2))
-		m.contentX = len(margin)
-		if side {
-			m.contentX += m.tocWidth()
+			m.contentX += m.tocWidth() + sideGap
 		}
 		marks := m.gutterMarks()
 		for i := 0; i < bodyH; i++ {
 			var b strings.Builder
+			b.WriteString(pad)
 			if side {
 				b.WriteString(sb[i])
-				b.WriteString(" ")
+				b.WriteString("  ")
 				b.WriteString(faint.Render("│"))
+				b.WriteString(strings.Repeat(" ", sideGap))
 			}
 			if li := m.top + i; li < len(m.doc.Lines) {
-				if mark, ok := marks[li]; ok && len(margin) >= 2 {
-					b.WriteString(margin[:len(margin)-2] + mark + " ")
+				if mark, ok := marks[li]; ok {
+					b.WriteString(mark + " ")
 				} else {
-					b.WriteString(margin)
+					b.WriteString("  ")
 				}
 				if l := m.doc.Lines[li]; l.Image > 0 && l.ImageRow >= 0 && m.doc.Images[l.Image-1].Rows > 0 {
 					im := m.doc.Images[l.Image-1]
@@ -615,7 +701,21 @@ func (m *Model) View() string {
 			rows = append(rows, b.String())
 		}
 	}
-	rows = append(rows, m.status())
+	// the frame: button bar, gap, text, gap, status; centered vertically
+	screen := make([]string, m.frameTop(), m.h)
+	screen = append(screen, m.topBar())
+	for i := 0; i < statusGap; i++ {
+		screen = append(screen, "")
+	}
+	screen = append(screen, rows...)
+	for i := 0; i < statusGap; i++ {
+		screen = append(screen, "")
+	}
+	screen = append(screen, m.status())
+	for len(screen) < m.h {
+		screen = append(screen, "")
+	}
+	rows = screen[:m.h]
 	if m.overlay != overlayNone {
 		m.drawOverlay(rows)
 	}
@@ -722,6 +822,8 @@ func (m *Model) sidebar(h, width int) []string {
 				text = reverse.Render(text)
 			case idx == cur:
 				text = bold.Render(text)
+			default:
+				text = faint.Render(text) // the text being read stays the brightest thing
 			case it.line < 0:
 				text = faint.Render(text)
 			}
@@ -743,28 +845,75 @@ func (m *Model) percent() int {
 	return 100
 }
 
+// status is the line under the text, aligned with the reading column:
+// chapter and progress, or a search prompt or short notice.
 func (m *Model) status() string {
 	title := m.book.Title
 	if cur := m.current(); cur >= 0 {
 		title = m.toc[cur].title
 	}
-	s := fmt.Sprintf("%s · %d%%", title, m.percent())
+	pct := fmt.Sprintf(" · %d%%", m.percent())
+	s := title + pct
 	if st := m.searchStatus(); st != "" {
 		s = st
-	}
-	if m.notice != "" {
+	} else if m.notice != "" {
 		s = m.notice
+	} else if room := m.barWidth(); runewidth.StringWidth(s) > room {
+		// a long chapter name is cut, never the percentage
+		s = runewidth.Truncate(title, max(1, room-runewidth.StringWidth(pct)), "…") + pct
 	}
-	btnW := runewidth.StringWidth(menuLabel)
-	s = runewidth.Truncate(s, max(1, m.w-2*btnW-4), "…")
-	sw := runewidth.StringWidth(s)
-	pad := max(0, (m.w-sw)/2)
-	btn := menuLabel
-	if m.overlay == overlayMenu {
-		btn = selStyle.Render(menuLabel)
-	} else {
-		btn = faint.Render(menuLabel)
+	return strings.Repeat(" ", m.contentX) + faint.Render(runewidth.Truncate(s, m.barWidth(), "…"))
+}
+
+func (m *Model) barWidth() int { return max(10, min(m.colW, m.w-m.contentX)) }
+
+// topBar is the line above the text: the book title on the left, the
+// buttons at the column's right edge. Each label starts with its key.
+// When the column is too narrow, buttons drop from the left; the menu stays.
+func (m *Model) topBar() string {
+	type button struct {
+		label string
+		x     *int
+		on    bool
 	}
-	gap := max(1, m.w-pad-sw-btnW)
-	return strings.Repeat(" ", pad) + faint.Render(s) + strings.Repeat(" ", gap) + btn
+	buttons := []button{
+		{tocLabel, &m.tocBtnX, false},
+		{keysLabel, &m.keysX, m.overlay == overlayHelp},
+		{menuLabel, &m.menuX, m.overlay == overlayMenu},
+	}
+	left := m.contentX
+	width := max(runewidth.StringWidth(menuLabel)+2, min(m.colW, m.w-left))
+	btnW := func(bs []button) int {
+		w := 0
+		for i, b := range bs {
+			if i > 0 {
+				w += 2
+			}
+			w += runewidth.StringWidth(b.label)
+		}
+		return w
+	}
+	for len(buttons) > 1 && width < btnW(buttons)+14 {
+		*buttons[0].x = -1
+		buttons = buttons[1:]
+	}
+	rightW := btnW(buttons)
+	title := runewidth.Truncate(m.book.Title, max(1, width-rightW-2), "…")
+	gap := max(1, width-runewidth.StringWidth(title)-rightW)
+	line := strings.Repeat(" ", left) + faint.Render(title) + strings.Repeat(" ", gap)
+	x := left + runewidth.StringWidth(title) + gap
+	for i, b := range buttons {
+		if i > 0 {
+			line += "  "
+			x += 2
+		}
+		*b.x = x
+		if b.on {
+			line += selStyle.Render(b.label)
+		} else {
+			line += faint.Render(b.label)
+		}
+		x += runewidth.StringWidth(b.label)
+	}
+	return line
 }

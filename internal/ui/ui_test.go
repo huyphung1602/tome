@@ -159,12 +159,12 @@ func TestMouseClickJumpsAndDragResizes(t *testing.T) {
 			break
 		}
 	}
-	m.Update(mouse(5, row, tea.MouseButtonLeft, tea.MouseActionPress))
+	m.Update(mouse(m.tocX+5, m.textTop()+row, tea.MouseButtonLeft, tea.MouseActionPress))
 	if topText(m) != "Chapter 2" {
 		t.Fatalf("click jumped to %q", topText(m))
 	}
 
-	border := m.sideW - 1
+	border := m.tocX + m.tocWidth() - 1
 	m.Update(mouse(border, 3, tea.MouseButtonLeft, tea.MouseActionPress))
 	m.Update(mouse(border+10, 3, tea.MouseButtonNone, tea.MouseActionMotion))
 	m.Update(mouse(border+10, 3, tea.MouseButtonNone, tea.MouseActionRelease))
@@ -173,7 +173,8 @@ func TestMouseClickJumpsAndDragResizes(t *testing.T) {
 	}
 	// can't squeeze the reading area below minContent
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
-	border = m.tocWidth() - 1
+	m.View()
+	border = m.tocX + m.tocWidth() - 1
 	m.Update(mouse(border, 3, tea.MouseButtonLeft, tea.MouseActionPress))
 	m.Update(mouse(95, 3, tea.MouseButtonNone, tea.MouseActionMotion))
 	if m.sideW != 100-minContent {
@@ -244,7 +245,7 @@ func TestSplitMouseSequencesAreNotKeys(t *testing.T) {
 
 func TestPickerIgnoresMouseFragments(t *testing.T) {
 	lib, _ := scanned(t, "a.epub")
-	p := NewPicker(lib, nil, "/", "", "")
+	p := NewPicker(lib, nil, "/", "", "", 0)
 	p.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
 	p.Update(runes("<65;50;10M"))
 	p.Update(runes("ab"))

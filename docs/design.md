@@ -7,7 +7,10 @@ A terminal EPUB reader with only what reading needs: a table of contents, well-f
 ## Layout
 
 - **Single page.** The whole book is rendered into one list of lines and scrolled continuously across chapters.
-- **Reading column.** The column is at most 72 cells wide and centered in the space left by the sidebar. It narrows on small terminals.
+- **Reading column.** The column is at most 72 cells wide. The sidebar and the column are centered on the screen as one group, with the sidebar a few columns from the text (2 columns of padding before its `│` border and 3 after it, then the 2-column mark margin), so wide screens don't push them apart. While the sidebar border is dragged, the group's position is frozen so the border stays under the mouse.
+- **Bars.** Above the text, after two blank rows, a button bar shows the book title on the left and `t contents`, `? keybinds` and `● menu` at the column's right edge, all clickable; each label starts with its key so the buttons teach the keybinds, and when the column is too narrow they drop from the left (the menu always stays). The menu drops down from its button. Below the text, after two blank rows, the status line shows the chapter and progress (a long chapter name is cut, never the percentage), search prompts and short notices. On first run it shows "press ? for keybinds" for a few seconds.
+- **Sidebar emphasis.** Entries other than the current chapter are dimmed, so the text being read is the brightest thing on screen.
+- **Reading frame.** The text area is at most 36 rows tall by default and centered vertically, with the status line right under the text, so the eyes travel less on tall screens. `-`/`+` change the height by 2 rows (10 at least; past the terminal height it becomes full screen). Pages turn by the frame height. The height is an app-wide preference in `prefs.json`. Mouse events are translated to text coordinates (rows above the text are negative and only the bar buttons react there); overlays are still placed on the whole screen.
 - **Sidebar.** Defaults to 36 cells, and can be resized from 20 to 70 with `<` `>` or by dragging its border. The width is one setting for all books. Long titles wrap instead of being truncated. The sidebar shrinks so the reading area keeps at least 64 cells; when even that doesn't fit, it hides, and `t` opens the contents full screen instead.
 - **Theme colors only.** Text uses bold, italic, dim, underline and reverse video. Headings add ANSI palette colors (h1 magenta, h2 blue, h3 cyan), which the terminal theme defines, so they always match it. tome uses normal rather than bright colors so headings stay readable on light themes, and `NO_COLOR` turns colors off.
 
@@ -71,7 +74,7 @@ The overlays follow herdr's approach. tome draws the full reading view first, th
 
 Running `tome` with no argument, or with a directory, scans for `*.epub` in the background. The scan skips hidden directories, `~/Library`, `~/go/pkg`, dependency and build directories, and Apple Books' unpacked `*.epub` directories. For each file it finds, it reads only the OPF for the title and author.
 
-The picker refreshes every 150 ms while the scan runs. The list starts with recent books, taken from saved state and sorted by when they were last opened, followed by all other books sorted by title. The filter folds case and diacritics, and every word of the query must appear in the title, author or file name. Quitting a book with `q` returns to the picker; `ctrl+c` exits the app.
+The picker uses the same frame as the reader (reading height, at most 100 columns wide, centered). It refreshes every 150 ms while the scan runs. The list starts with the five most recently opened books, taken from saved state, followed by all other books sorted by title; older recent books move there and keep their progress. The filter folds case and diacritics, and every word of the query must appear in the title, author or file name. Quitting a book with `q` returns to the picker; `ctrl+c` exits the app.
 
 ## Selection and copy (`ui/selection.go`, `internal/clipboard`)
 
@@ -99,7 +102,7 @@ A bookmark is a `(chapter, block)` pair, the same unit as the reading position, 
 
 The menu lists only what applies right now, each item with its shortcut:
 
-- keybindings (`?`)
+- keybinds (`?`)
 - show or hide contents (`t`)
 - search (`/`) and bookmarks (`'`)
 - images (`i`), only when the book has images

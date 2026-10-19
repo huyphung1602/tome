@@ -36,8 +36,14 @@ type Picker struct {
 	scanned int
 	done    bool
 	w, h    int
+	maxH    int
 	rowItem []int // list row -> index in shown, -1 for headers
 }
+
+// frameH is the picker's height: the reading frame plus its status line.
+func (p *Picker) frameH() int { return max(6, min(p.h, p.maxH+1)) }
+
+func (p *Picker) frameTop() int { return max(0, (p.h-p.frameH())/2) }
 
 type pickEntry struct {
 	path, title, author string
@@ -52,8 +58,16 @@ func tick() tea.Cmd {
 	return tea.Tick(150*time.Millisecond, func(time.Time) tea.Msg { return tickMsg{} })
 }
 
-func NewPicker(lib *library.Library, recent []state.Position, root, home, notice string) *Picker {
-	p := &Picker{lib: lib, recent: recent, root: root, home: home, notice: notice}
+// maxRecent is how many recently opened books head the list.
+const maxRecent = 5
+
+// NewPicker builds the book list. readHeight is the reading-frame
+// preference (0 = default), so the picker sits in the same frame.
+func NewPicker(lib *library.Library, recent []state.Position, root, home, notice string, readHeight int) *Picker {
+	p := &Picker{lib: lib, recent: recent, root: root, home: home, notice: notice, maxH: defaultHeight}
+	if readHeight > 0 {
+		p.maxH = max(minHeight, readHeight)
+	}
 	p.refresh()
 	return p
 }
@@ -67,13 +81,21 @@ func (p *Picker) refresh() {
 		return
 	}
 	p.scanned, p.done = len(books), done
+	// the newest few books are "recent"; older ones move to the main list
+	// but keep their progress
 	seen := map[string]bool{}
-	p.all = p.all[:0]
-	for _, r := range p.recent {
-		seen[r.Path] = true
-		p.all = append(p.all, newEntry(r.Path, r.Title, r.Author, r.Progress, true))
-	}
+	progress := map[string]int{}
 	var found []pickEntry
+	p.all = p.all[:0]
+	for i, r := range p.recent {
+		seen[r.Path] = true
+		if i < maxRecent {
+			p.all = append(p.all, newEntry(r.Path, r.Title, r.Author, r.Progress, true))
+		} else {
+			progress[r.Path] = r.Progress
+			found = append(found, newEntry(r.Path, r.Title, r.Author, r.Progress, false))
+		}
+	}
 	for _, b := range books {
 		if !seen[b.Path] {
 			found = append(found, newEntry(b.Path, b.Title, b.Author, -1, false))
@@ -137,7 +159,7 @@ func (p *Picker) filter() {
 	}
 }
 
-func (p *Picker) listH() int { return max(1, p.h-5) }
+func (p *Picker) listH() int { return max(1, p.frameH()-5) }
 
 func (p *Picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -156,7 +178,8 @@ func (p *Picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.Button == tea.MouseButtonWheelDown:
 			p.move(3)
 		case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft:
-			if row := msg.Y - 3 + p.offset; msg.Y >= 3 && row < len(p.rowItem) && p.rowItem[row] >= 0 {
+			y := msg.Y - p.frameTop()
+			if row := y - 3 + p.offset; y >= 3 && row < len(p.rowItem) && p.rowItem[row] >= 0 {
 				p.cursor = p.rowItem[row]
 				return p, p.open()
 			}
@@ -216,7 +239,7 @@ func (p *Picker) View() string {
 	if p.w == 0 {
 		return ""
 	}
-	width := min(p.w-4, 110)
+	width := min(p.w-4, 100)
 	margin := strings.Repeat(" ", max(0, (p.w-width)/2))
 	rows := []string{
 		margin + bold.Render("tome") + faint.Render("  pick a book"),
@@ -281,7 +304,7 @@ func (p *Picker) View() string {
 	for r := p.offset; r < min(len(list), p.offset+h); r++ {
 		rows = append(rows, margin+list[r])
 	}
-	for len(rows) < p.h-2 {
+	for len(rows) < p.frameH()-2 {
 		rows = append(rows, "")
 	}
 
@@ -295,7 +318,9 @@ func (p *Picker) View() string {
 	hint := "↑↓ select · enter open · esc quit"
 	gap := max(2, width-runewidth.StringWidth(hint)-runewidth.StringWidth(status))
 	rows = append(rows, "", margin+faint.Render(hint+strings.Repeat(" ", gap)+status))
-	return strings.Join(rows[:min(len(rows), p.h)], "\n")
+	rows = rows[:min(len(rows), p.frameH())]
+	screen := make([]string, p.frameTop(), p.h)
+	return strings.Join(append(screen, rows...), "\n")
 }
 
 // entryRow renders "▸ Title — Author        34%  ~/dir" within width.

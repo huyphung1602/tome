@@ -31,7 +31,7 @@ const usage = `usage: tome [book.epub | directory]
   t            toggle contents  tab        focus contents (enter jumps)
   < / >        contents narrower/wider (or drag its border)
   i            view image on screen (or click it)
-  m  ?         menu, keybindings
+  m  ?         menu, keybinds
   q            save position, back to the book list (ctrl+c quits)
 
   TOME_IMAGES=inline|modal|off  override image support detection
@@ -104,7 +104,7 @@ func run(args []string) error {
 	lib := library.Scan(root)
 	notice := ""
 	for {
-		p := ui.NewPicker(lib, state.Recent(dir), root, home, notice)
+		p := ui.NewPicker(lib, state.Recent(dir), root, home, notice, state.LoadPrefs(dir).ReadHeight)
 		if _, err := tea.NewProgram(p, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 			return err
 		}
@@ -138,19 +138,25 @@ func (a *app) read(file string, fromList bool) (quitAll bool, err error) {
 	// sidebar width and visibility are app-wide, not per book
 	pos := state.Load(a.stateDir, key)
 	prefs := state.LoadPrefs(a.stateDir)
-	pos.HideTOC, pos.TOCWidth = prefs.HideTOC, prefs.TOCWidth
+	pos.HideTOC, pos.TOCWidth, pos.ReadHeight = prefs.HideTOC, prefs.TOCWidth, prefs.ReadHeight
+	hinted := prefs.Hinted
 	var saveErr error
 	m := ui.New(book, pos, func(p state.Position) {
-		if err := state.SavePrefs(a.stateDir, state.Prefs{HideTOC: p.HideTOC, TOCWidth: p.TOCWidth}); err != nil {
+		if err := state.SavePrefs(a.stateDir, state.Prefs{HideTOC: p.HideTOC, TOCWidth: p.TOCWidth, ReadHeight: p.ReadHeight, Hinted: true}); err != nil {
 			saveErr = err
 		}
-		p.HideTOC, p.TOCWidth = false, 0
+		p.HideTOC, p.TOCWidth, p.ReadHeight = false, 0, 0
 		p.Path, p.Title, p.Author, p.Opened = abs, book.Title, book.Author, opened
 		if err := state.Save(a.stateDir, key, p); err != nil {
 			saveErr = err
 		}
 	})
 	m.SetBookList(fromList)
+	if !hinted { // first run: say where the keys are
+		m.ShowHint()
+		prefs.Hinted = true
+		state.SavePrefs(a.stateDir, prefs)
+	}
 	m.SetClipboard(clipboard.Write)
 	switch a.images {
 	case "off":

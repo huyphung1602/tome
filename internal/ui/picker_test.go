@@ -39,7 +39,7 @@ func TestFoldStripsVietnameseDiacritics(t *testing.T) {
 func TestPickerSectionsFilterAndOpen(t *testing.T) {
 	lib, root := scanned(t, "Dam Bi Ghet.epub", "classics/alice.epub", "classics/pride.epub")
 	recent := []state.Position{{Path: filepath.Join(root, "classics/pride.epub"), Title: "Pride and Prejudice", Author: "Jane Austen", Progress: 15}}
-	p := NewPicker(lib, recent, root, "", "")
+	p := NewPicker(lib, recent, root, "", "", 0)
 	p.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
 
 	v := p.View()
@@ -87,7 +87,7 @@ func TestPickerSectionsFilterAndOpen(t *testing.T) {
 
 func TestPickerClickOpens(t *testing.T) {
 	lib, _ := scanned(t, "a.epub", "b.epub")
-	p := NewPicker(lib, nil, "/", "", "")
+	p := NewPicker(lib, nil, "/", "", "", 0)
 	p.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
 	p.View()
 	row := -1
@@ -104,7 +104,7 @@ func TestPickerClickOpens(t *testing.T) {
 
 func TestPickerEmpty(t *testing.T) {
 	lib, root := scanned(t)
-	p := NewPicker(lib, nil, root, "", "")
+	p := NewPicker(lib, nil, root, "", "", 0)
 	p.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
 	if !strings.Contains(p.View(), "no EPUB files found") {
 		t.Error("missing empty message")

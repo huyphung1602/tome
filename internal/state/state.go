@@ -14,11 +14,12 @@ import (
 )
 
 type Position struct {
-	Chapter  int  `json:"chapter"`
-	Block    int  `json:"block"`
-	HideTOC  bool `json:"hide_toc,omitempty"`  // passed to the UI from Prefs
-	TOCWidth int  `json:"toc_width,omitempty"` // passed to the UI from Prefs
-	Progress int  `json:"progress,omitempty"`  // percent read
+	Chapter    int  `json:"chapter"`
+	Block      int  `json:"block"`
+	HideTOC    bool `json:"hide_toc,omitempty"`    // passed to the UI from Prefs
+	TOCWidth   int  `json:"toc_width,omitempty"`   // passed to the UI from Prefs
+	ReadHeight int  `json:"read_height,omitempty"` // passed to the UI from Prefs
+	Progress   int  `json:"progress,omitempty"`    // percent read
 
 	Bookmarks []Mark `json:"bookmarks,omitempty"`
 
@@ -110,8 +111,10 @@ func Recent(dir string) []Position {
 
 // Prefs are UI settings shared by every book.
 type Prefs struct {
-	HideTOC  bool `json:"hide_toc,omitempty"`
-	TOCWidth int  `json:"toc_width,omitempty"`
+	HideTOC    bool `json:"hide_toc,omitempty"`
+	TOCWidth   int  `json:"toc_width,omitempty"`
+	ReadHeight int  `json:"read_height,omitempty"` // rows; 0 = default
+	Hinted     bool `json:"hinted,omitempty"`      // the "press ? for keybinds" hint was shown
 }
 
 func LoadPrefs(dir string) Prefs {

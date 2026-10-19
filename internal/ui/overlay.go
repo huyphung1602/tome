@@ -30,7 +30,11 @@ const (
 	overlayBookmarks
 )
 
-const menuLabel = "● menu"
+const (
+	menuLabel = "● menu"
+	keysLabel = "? keybinds"
+	tocLabel  = "t contents"
+)
 
 type menuAction int
 
@@ -57,7 +61,7 @@ func (m *Model) menuEntries() []menuEntry {
 		toc = "hide contents"
 	}
 	items := []menuEntry{
-		{"keybindings", "?", menuHelp},
+		{"keybinds", "?", menuHelp},
 		{toc, "t", menuTOC},
 		{"search", "/", menuSearch},
 		{"bookmarks", "'", menuBookmarks},
@@ -96,6 +100,7 @@ func (m *Model) helpRows() [][2]string {
 		{"t", "show / hide contents"},
 		{"tab", "focus contents (enter jumps, esc leaves)"},
 		{"< >", "narrower / wider contents"},
+		{"- +", "shorter / taller reading frame"},
 		{"i", "view the image on screen (← → next, o open)"},
 		{"m  ?", "menu, this help"},
 		{"", ""},
@@ -480,8 +485,9 @@ func (m *Model) drawOverlay(rows []string) {
 		}
 		b := box(lines, innerW, m.menuSel)
 		w := ansi.StringWidth(b[0])
-		x := max(0, m.w-w)
-		y := max(0, m.h-1-len(b))
+		// right edge lined up with the menu button
+		x := max(0, min(m.w-w, m.menuX+runewidth.StringWidth(menuLabel)-w))
+		y := m.barY() + 1 // drops down from the button
 		place(rows, b, x, y)
 		m.hit = rect{x, y + 1, w, len(items)}
 	case overlayHelp:
@@ -490,7 +496,7 @@ func (m *Model) drawOverlay(rows []string) {
 		for _, r := range helpRows {
 			keyW = max(keyW, runewidth.StringWidth(r[0]))
 		}
-		lines := []string{bold.Render("keybindings"), ""}
+		lines := []string{bold.Render("keybinds"), ""}
 		for _, r := range helpRows {
 			if r[0] == "" {
 				lines = append(lines, "")
@@ -618,7 +624,15 @@ func (m *Model) overlayMouse(msg tea.MouseMsg) tea.Cmd {
 }
 
 func (m *Model) onMenuButton(x, y int) bool {
-	return y == m.h-1 && x >= m.w-runewidth.StringWidth(menuLabel)-1
+	return y == m.barY() && x >= m.menuX && x < m.menuX+runewidth.StringWidth(menuLabel)
+}
+
+func (m *Model) onTOCButton(x, y int) bool {
+	return m.tocBtnX >= 0 && y == m.barY() && x >= m.tocBtnX && x < m.tocBtnX+runewidth.StringWidth(tocLabel)
+}
+
+func (m *Model) onKeysButton(x, y int) bool {
+	return m.keysX >= 0 && y == m.barY() && x >= m.keysX && x < m.keysX+runewidth.StringWidth(keysLabel)
 }
 
 func wrapPlain(s string, width int) []string {

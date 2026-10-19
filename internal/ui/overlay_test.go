@@ -63,7 +63,7 @@ func TestMenuOpensHelp(t *testing.T) {
 	}
 	keys(m, runes("m"))
 	v := m.View()
-	if m.overlay != overlayMenu || !strings.Contains(v, "keybindings") || !strings.Contains(v, "quit") {
+	if m.overlay != overlayMenu || !strings.Contains(v, "keybinds") || !strings.Contains(v, "quit") {
 		t.Fatalf("menu not shown:\n%s", v)
 	}
 	keys(m, tea.KeyMsg{Type: tea.KeyEnter})
@@ -84,7 +84,7 @@ func TestMenuByMouse(t *testing.T) {
 	m := New(testBook(), state.Position{}, nil)
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
 	m.View()
-	m.Update(mouse(119, 23, tea.MouseButtonLeft, tea.MouseActionPress))
+	m.Update(mouse(m.menuX+1, m.barY(), tea.MouseButtonLeft, tea.MouseActionPress))
 	if m.overlay != overlayMenu {
 		t.Fatal("click on menu button did not open menu")
 	}
@@ -145,7 +145,7 @@ func TestImageModalWithoutGraphics(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	// click the [Image] line
 	m.View()
-	y := m.doc.Images[0].Line - m.top
+	y := m.textTop() + m.doc.Images[0].Line - m.top
 	_, cmd := m.Update(mouse(60, y, tea.MouseButtonLeft, tea.MouseActionPress))
 	run(cmd)
 	v := m.View()
@@ -187,7 +187,7 @@ func TestInlineImages(t *testing.T) {
 
 	// clicking an inline image row opens the modal
 	m.Update(runes("k"))
-	_, cmd = m.Update(mouse(60, m.doc.Images[0].Line+2-m.top, tea.MouseButtonLeft, tea.MouseActionPress))
+	_, cmd = m.Update(mouse(60, m.textTop()+m.doc.Images[0].Line+2-m.top, tea.MouseButtonLeft, tea.MouseActionPress))
 	run(cmd)
 	if m.overlay != overlayImage || m.img.idx != 0 {
 		t.Errorf("click on inline image: overlay=%d idx=%d", m.overlay, m.img.idx)

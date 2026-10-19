@@ -6,7 +6,7 @@
 
 A minimal EPUB reader for the terminal.
 
-- One continuous scroll, centered in a readable column of at most 72 characters
+- One continuous scroll in a reading frame of at most 72 characters by 36 lines, centered on screen
 - A table of contents sidebar: click to jump, drag the border to resize
 - Remembers where you stopped in every book
 - A book picker that finds every EPUB in your home folder
@@ -45,7 +45,9 @@ tome ~/Books         # pick a book from a folder
 tome book.epub       # open a book directly
 ```
 
-In the book picker, type to filter by title, author or file name (accents are ignored). Press `enter` to open a book and `esc` to quit.
+In the book picker, the five books you opened most recently come first, then every other book (with your progress, if you started it). Type to filter by title, author or file name (accents are ignored). Press `enter` to open a book and `esc` to quit.
+
+Above the text, `t contents` shows or hides the table of contents, `? keybinds` lists every keybinding, and `● menu` opens the menu. Each label starts with its key.
 
 | Key | Action |
 |---|---|
@@ -60,8 +62,9 @@ In the book picker, type to filter by title, author or file name (accents are ig
 | `t` | show / hide contents |
 | `tab` | focus contents (`enter` jumps) |
 | `<` `>` | resize contents |
+| `-` `+` | shorter / taller reading frame (`+` past the screen height = full screen) |
 | `i` | view the image on screen |
-| `m` `?` | menu, all keybindings |
+| `m` `?` | menu, all keybinds |
 | `q` | back to the book list |
 | `ctrl+c` | quit |
 

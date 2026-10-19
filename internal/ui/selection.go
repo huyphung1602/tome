@@ -242,11 +242,13 @@ func (m *Model) copySelection() tea.Cmd {
 }
 
 // flash shows a short message in the status bar.
-func (m *Model) flash(msg string) tea.Cmd {
+func (m *Model) flash(msg string) tea.Cmd { return m.flashFor(msg, 2*time.Second) }
+
+func (m *Model) flashFor(msg string, d time.Duration) tea.Cmd {
 	m.noticeID++
 	id := m.noticeID
 	m.notice = msg
-	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return noticeMsg{id} })
+	return tea.Tick(d, func(time.Time) tea.Msg { return noticeMsg{id} })
 }
 
 // selectMouse handles left-button drags in the reading column. It returns

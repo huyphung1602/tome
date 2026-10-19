@@ -36,7 +36,7 @@ func screen(t *testing.T, m *Model, text string) (x, y int) {
 	t.Helper()
 	for i := m.top; i < len(m.doc.Lines); i++ {
 		if c := strings.Index(m.doc.Lines[i].Plain(), text); c >= 0 {
-			return m.contentX + len([]rune(m.doc.Lines[i].Plain()[:c])), i - m.top
+			return m.contentX + len([]rune(m.doc.Lines[i].Plain()[:c])), m.textTop() + i - m.top
 		}
 	}
 	t.Fatalf("%q not on screen", text)
@@ -65,10 +65,10 @@ func TestDragCopiesCleanText(t *testing.T) {
 	if !strings.Contains(m.status(), "copied") {
 		t.Errorf("status = %q", m.status())
 	}
-	if c0, c1 := m.lineSel(y0 + m.top); c0 >= c1 {
+	if c0, c1 := m.lineSel(y0 - m.textTop() + m.top); c0 >= c1 {
 		t.Error("selection not highlighted")
 	}
-	if got := renderLine(m.doc.Lines[y1+m.top].Spans, 0, 2, nil, nil); !strings.Contains(got, "la") {
+	if got := renderLine(m.doc.Lines[y1-m.textTop()+m.top].Spans, 0, 2, nil, nil); !strings.Contains(got, "la") {
 		t.Errorf("renderLine dropped text: %q", got)
 	}
 }
@@ -128,7 +128,7 @@ func TestMenuEntriesDependOnContext(t *testing.T) {
 		}
 		return strings.Join(l, ",")
 	}
-	if got := labels(); got != "keybindings=?,hide contents=t,search=/,bookmarks=',images=i,quit=q" {
+	if got := labels(); got != "keybinds=?,hide contents=t,search=/,bookmarks=',images=i,quit=q" {
 		t.Errorf("standalone menu = %s", got)
 	}
 	m.SetBookList(true)
@@ -189,7 +189,7 @@ func TestCopyWrappedCodeRejoinsLines(t *testing.T) {
 	m.View()
 	_, y0 := screen(t, m, "short")
 	_, y1 := screen(t, m, "end")
-	drag(m, 0, y0-1, m.w-1, y1+1)
+	drag(m, m.contentX-2, y0-1, m.w-1, y1+1)
 	if want := "  short\n  " + long + "\nend"; copied != want {
 		t.Errorf("copied %q\nwant   %q", copied, want)
 	}
