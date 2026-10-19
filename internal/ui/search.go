@@ -206,6 +206,7 @@ func (m *Model) showMatch() {
 		m.clamp()
 	}
 	m.caret = line
+	m.reveal = true
 }
 
 func (m *Model) stepMatch(d int) {

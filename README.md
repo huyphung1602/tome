@@ -51,7 +51,7 @@ Above the text, `t contents` shows or hides the table of contents, `? keybinds` 
 
 | Key | Action |
 |---|---|
-| `j` `k` / `↓` `↑` | move the cursor (a dim ◆ in the margin); the page scrolls at the edges |
+| `j` `k` / `↓` `↑` | move the cursor (a dim ◆ in the margin that hides after a few seconds); the page scrolls at the edges |
 | `space` `b`, `l` `h`, `→` `←` | page down / up |
 | `g` `G` | start / end |
 | `n` `p` | next / previous chapter |

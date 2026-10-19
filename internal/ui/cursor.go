@@ -1,12 +1,32 @@
 package ui
 
-import "github.com/huyphung1602/tome/internal/state"
+import (
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/huyphung1602/tome/internal/state"
+)
 
 // The cursor is a line, moved like in vim: j/k move it and the view only
 // scrolls when it gets within scrolloff lines of an edge; the mouse wheel
 // scrolls the view and drags the cursor along only when its line would
 // leave the screen; half pages move both; full pages put it at the top
 // (or bottom) of the new page. B bookmarks the paragraph it's in.
+
+// The cursor mark hides after caretIdle without aiming at a spot: moving
+// the cursor, jumping, clicking or bookmarking shows it again; reading
+// moves (wheel, half and full pages) don't.
+const caretIdle = 3 * time.Second
+
+type caretIdleMsg struct{ id int }
+
+func (m *Model) showCaret() tea.Cmd {
+	m.caretOn = true
+	m.caretID++
+	id := m.caretID
+	return tea.Tick(caretIdle, func(time.Time) tea.Msg { return caretIdleMsg{id} })
+}
 
 // scrolloff is how close to the top or bottom edge the cursor may get.
 func (m *Model) scrolloff() int { return min(3, max(0, (m.bodyH()-1)/4)) }
@@ -84,6 +104,7 @@ func (m *Model) moveLine(n int) {
 		m.caret = next
 	}
 	m.scrollToCursor()
+	m.reveal = true
 }
 
 // scrollView moves the view, leaving the cursor on its line if it stays visible.
@@ -124,6 +145,7 @@ func (m *Model) page(d int) {
 // heading at the top of the screen keeps the cursor.
 func (m *Model) setCursor(li int) {
 	m.caret = m.snap(li, 1)
+	m.reveal = true
 	if m.caret < m.top || m.caret >= m.top+m.bodyH() {
 		m.keepCursorOnScreen()
 	}
@@ -150,6 +172,7 @@ func (m *Model) paragraphMotion(d int) {
 		}
 	}
 	m.scrollToCursor()
+	m.reveal = true
 }
 
 // caretPara is the paragraph the cursor is in.

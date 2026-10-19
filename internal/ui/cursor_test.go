@@ -142,3 +142,60 @@ func TestClickMovesCursor(t *testing.T) {
 		t.Errorf("click: cursor on %q, bookmarks %v", caretText(m), m.bookmarks)
 	}
 }
+
+func caretShown(m *Model) bool {
+	return strings.Contains(m.View(), cursorMark()) || strings.Contains(m.View(), bookmarkCursorMark())
+}
+
+func TestCursorHidesWhenIdleAndOnlyAimingShowsIt(t *testing.T) {
+	m := vimModel(t)
+	if caretShown(m) {
+		t.Fatal("cursor shown before any move")
+	}
+	_, cmd := m.Update(runes("j"))
+	if !caretShown(m) || cmd == nil {
+		t.Fatal("j should show the cursor and schedule hiding it")
+	}
+	m.Update(caretIdleMsg{id: m.caretID})
+	if caretShown(m) {
+		t.Fatal("cursor still shown after the idle tick")
+	}
+	// reading moves keep it hidden
+	for _, k := range []tea.Msg{runes(" "), runes("b"), runes("l"), tea.KeyMsg{Type: tea.KeyCtrlD},
+		mouse(50, 5, tea.MouseButtonWheelDown, tea.MouseActionPress)} {
+		m.Update(k)
+		if caretShown(m) {
+			t.Errorf("%v revealed the cursor", k)
+		}
+	}
+	// a stale tick from an earlier reveal doesn't hide a newer one
+	old := m.caretID
+	keys(m, runes("}"))
+	m.Update(caretIdleMsg{id: old})
+	if !caretShown(m) {
+		t.Error("stale idle tick hid the cursor")
+	}
+	// jumps show it
+	m.Update(caretIdleMsg{id: m.caretID})
+	keys(m, runes("n"))
+	if !caretShown(m) {
+		t.Error("chapter jump should show the cursor")
+	}
+}
+
+func TestBookmarkNoticeNamesParagraphAndShowsCursor(t *testing.T) {
+	m := vimModel(t)
+	keys(m, runes("jjjj"))
+	m.Update(caretIdleMsg{id: m.caretID})
+	keys(m, runes("B"))
+	if !strings.Contains(m.notice, "bookmarked: “c0 para") {
+		t.Errorf("notice = %q", m.notice)
+	}
+	if !strings.Contains(m.View(), bookmarkCursorMark()) {
+		t.Error("B should show the cursor on the new bookmark")
+	}
+	keys(m, runes("B"))
+	if !strings.HasPrefix(m.notice, "bookmark removed: “") {
+		t.Errorf("notice = %q", m.notice)
+	}
+}

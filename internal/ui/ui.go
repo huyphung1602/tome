@@ -100,8 +100,11 @@ type Model struct {
 	search    searchState
 	bookmarks []state.Mark
 	bmSel     int
-	bmTop     int // first bookmark shown in the list
-	caret     int // cursor line in the text (vim-style); B bookmarks its paragraph
+	bmTop     int  // first bookmark shown in the list
+	caret     int  // cursor line in the text (vim-style); B bookmarks its paragraph
+	caretOn   bool // the cursor mark is showing; it hides after caretIdle
+	caretID   int
+	reveal    bool // something aimed at a spot this update: show the cursor
 }
 
 // isMouseFragment spots the tail of a mouse escape sequence (e.g.
@@ -252,7 +255,7 @@ func (m *Model) layout() {
 		m.top = m.doc.Locate(pos.Chapter, pos.Block)
 	}
 	m.clamp()
-	m.setCursor(m.top)
+	m.caret = m.snap(m.top, 1) // re-layout isn't aiming anywhere: keep the mark hidden
 	if m.search.query != "" { // line numbers changed: find the hits again
 		cur := m.search.cur
 		m.search.matches = m.findMatches(m.search.query)
@@ -340,6 +343,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if sync := m.syncImages(); sync != nil {
 		cmd = tea.Batch(cmd, sync)
 	}
+	if m.reveal {
+		m.reveal = false
+		cmd = tea.Batch(cmd, m.showCaret())
+	}
 	return m, cmd
 }
 
@@ -355,6 +362,11 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case noticeMsg:
 		if msg.id == m.noticeID {
 			m.notice = ""
+		}
+		return m, nil
+	case caretIdleMsg:
+		if msg.id == m.caretID {
+			m.caretOn = false
 		}
 		return m, nil
 	case tea.MouseMsg:
@@ -413,6 +425,7 @@ func (m *Model) key(k string) tea.Cmd {
 		m.openSearch()
 		return nil
 	case "B":
+		m.reveal = true // show which paragraph it was
 		return m.flash(m.toggleBookmark(m.caret))
 	case "{", "}":
 		d := 1
@@ -494,10 +507,12 @@ func (m *Model) key(k string) tea.Cmd {
 	case "g", "home":
 		m.top = 0
 		m.caret = m.snap(0, 1)
+		m.reveal = true
 	case "G", "end":
 		m.top = len(m.doc.Lines)
 		m.clamp()
 		m.caret = m.snap(len(m.doc.Lines)-1, -1)
+		m.reveal = true
 	case "n":
 		if m.search.active() {
 			m.stepMatch(1)

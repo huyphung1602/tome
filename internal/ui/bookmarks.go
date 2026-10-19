@@ -60,10 +60,12 @@ func (m *Model) toggleBookmark(li int) string {
 	if !ok {
 		return ""
 	}
+	start, _ := m.blockSpan(mk)
+	what := "“" + m.snippet(start, 40) + "”"
 	if i := slices.Index(m.bookmarks, mk); i >= 0 {
 		m.bookmarks = slices.Delete(m.bookmarks, i, i+1)
 		m.persist()
-		return "bookmark removed"
+		return "bookmark removed: " + what
 	}
 	m.bookmarks = append(m.bookmarks, mk)
 	slices.SortFunc(m.bookmarks, func(a, b state.Mark) int {
@@ -73,7 +75,7 @@ func (m *Model) toggleBookmark(li int) string {
 		return a.Block - b.Block
 	})
 	m.persist()
-	return "bookmarked · ' to list"
+	return "bookmarked: " + what + " · ' lists"
 }
 
 // bookmarkLine is the first line of a bookmarked paragraph.
@@ -97,7 +99,7 @@ func (m *Model) gutterMarks() map[int]string {
 		}
 		seen[mk] = true
 	}
-	if m.caret >= m.top && m.caret < m.top+m.bodyH() {
+	if m.caretOn && m.caret >= m.top && m.caret < m.top+m.bodyH() {
 		if _, marked := out[m.caret]; marked {
 			out[m.caret] = bookmarkCursorMark()
 		} else {
