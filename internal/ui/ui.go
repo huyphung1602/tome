@@ -256,7 +256,7 @@ func (m *Model) layout() {
 	}
 	m.clamp()
 	m.caret = m.snap(m.top, 1) // re-layout isn't aiming anywhere: keep the mark hidden
-	if m.search.query != "" { // line numbers changed: find the hits again
+	if m.search.query != "" {  // line numbers changed: find the hits again
 		cur := m.search.cur
 		m.search.matches = m.findMatches(m.search.query)
 		m.search.cur = min(cur, max(0, len(m.search.matches)-1))
