@@ -100,6 +100,7 @@ type Model struct {
 	search    searchState
 	bookmarks []state.Mark
 	bmSel     int
+	bmTop     int // first bookmark shown in the list
 	caret     int // cursor line in the text (vim-style); B bookmarks its paragraph
 }
 
@@ -421,7 +422,7 @@ func (m *Model) key(k string) tea.Cmd {
 		m.paragraphMotion(d)
 		return nil
 	case "'":
-		m.overlay, m.bmSel = overlayBookmarks, 0
+		m.overlay, m.bmSel, m.bmTop = overlayBookmarks, 0, 0
 		return nil
 	case "esc":
 		if m.search.query != "" && !m.focusTOC {

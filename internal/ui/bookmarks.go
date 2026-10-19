@@ -161,6 +161,14 @@ func (m *Model) bookmarksKey(k string) {
 		m.bmSel = min(m.bmSel+1, len(m.bookmarks)-1)
 	case "k", "up":
 		m.bmSel = max(m.bmSel-1, 0)
+	case "g", "home":
+		m.bmSel = 0
+	case "G", "end":
+		m.bmSel = max(0, len(m.bookmarks)-1)
+	case "pgdown", " ", "ctrl+d":
+		m.bmSel = min(m.bmSel+m.bookmarkListH(), len(m.bookmarks)-1)
+	case "pgup", "b", "ctrl+u":
+		m.bmSel = max(m.bmSel-m.bookmarkListH(), 0)
 	case "enter":
 		m.overlay = overlayNone
 		m.jumpToBookmark(m.bmSel)
@@ -175,14 +183,48 @@ func (m *Model) bookmarksKey(k string) {
 	}
 }
 
-// bookmarkRows renders the list for the bookmarks overlay.
+// maxBookmarkRows caps the bookmark list; longer lists scroll.
+const maxBookmarkRows = 15
+
+// bookmarkListH is how many bookmarks the list shows at once: up to
+// maxBookmarkRows, fewer on short screens so the box always fits.
+func (m *Model) bookmarkListH() int {
+	// box border 2 + title 2 + "more" rows 2 + blank and hint 2
+	return max(3, min(maxBookmarkRows, m.h-8))
+}
+
+// bookmarkRows renders the bookmarks overlay: title with position, a
+// window of the list that follows the selection, "more" markers above and
+// below, and the key hint. Rows are fixed so clicks map to bookmarks.
 func (m *Model) bookmarkRows(innerW int) []string {
-	lines := []string{bold.Render("bookmarks"), ""}
+	title := bold.Render("bookmarks")
+	if n := len(m.bookmarks); n > 0 {
+		title += faint.Render(fmt.Sprintf("  %d/%d", m.bmSel+1, n))
+	}
+	lines := []string{title, ""}
 	if len(m.bookmarks) == 0 {
 		lines = append(lines, faint.Render("no bookmarks yet: press B on a paragraph,"), faint.Render("or click the left margin next to it"))
+		return append(lines, "", faint.Render("esc close"))
 	}
+	// keep the selection inside the visible window
+	h := m.bookmarkListH()
+	if m.bmSel < m.bmTop {
+		m.bmTop = m.bmSel
+	} else if m.bmSel >= m.bmTop+h {
+		m.bmTop = m.bmSel - h + 1
+	}
+	m.bmTop = max(0, min(m.bmTop, len(m.bookmarks)-h))
+	end := min(len(m.bookmarks), m.bmTop+h)
+
+	more := func(n int, arrow string) string {
+		if n <= 0 {
+			return ""
+		}
+		return faint.Render(fmt.Sprintf("%s %d more", arrow, n))
+	}
+	lines = append(lines, more(m.bmTop, "↑"))
 	maxTop := max(1, len(m.doc.Lines)-m.bodyH())
-	for _, mk := range m.bookmarks {
+	for _, mk := range m.bookmarks[m.bmTop:end] {
 		li := m.bookmarkLine(mk)
 		pct := fmt.Sprintf("%3d%%", min(100, li*100/maxTop))
 		title := runewidth.Truncate(m.chapterTitleAt(li), innerW/3, "…")
@@ -192,6 +234,7 @@ func (m *Model) bookmarkRows(innerW int) []string {
 		row += strings.Repeat(" ", pad) + faint.Render(pct)
 		lines = append(lines, row)
 	}
-	hint := "enter jump · d delete · esc close"
+	lines = append(lines, more(len(m.bookmarks)-end, "↓"))
+	hint := "↑↓ select · enter jump · d delete · esc close"
 	return append(lines, "", faint.Render(hint))
 }

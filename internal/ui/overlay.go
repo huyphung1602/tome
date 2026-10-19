@@ -364,7 +364,7 @@ func (m *Model) activateMenu(i int) tea.Cmd {
 	case menuSearch:
 		m.openSearch()
 	case menuBookmarks:
-		m.overlay, m.bmSel = overlayBookmarks, 0
+		m.overlay, m.bmSel, m.bmTop = overlayBookmarks, 0, 0
 	case menuImages:
 		idx := m.firstVisibleImage()
 		if idx < 0 {
@@ -548,7 +548,7 @@ func (m *Model) drawOverlay(rows []string) {
 		lines := m.bookmarkRows(innerW)
 		sel := -1
 		if len(m.bookmarks) > 0 {
-			sel = 2 + m.bmSel
+			sel = 3 + m.bmSel - m.bmTop // title, blank, "more" row, then the list
 		}
 		b := box(lines, innerW, sel)
 		m.hit = m.center(rows, b)
@@ -598,6 +598,14 @@ func (r rect) contains(x, y int) bool {
 }
 
 func (m *Model) overlayMouse(msg tea.MouseMsg) tea.Cmd {
+	if m.overlay == overlayBookmarks && (msg.Button == tea.MouseButtonWheelDown || msg.Button == tea.MouseButtonWheelUp) {
+		d := 3
+		if msg.Button == tea.MouseButtonWheelUp {
+			d = -3
+		}
+		m.bmSel = max(0, min(m.bmSel+d, len(m.bookmarks)-1))
+		return nil
+	}
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
 		return nil
 	}
@@ -614,8 +622,9 @@ func (m *Model) overlayMouse(msg tea.MouseMsg) tea.Cmd {
 		return m.closeOverlay()
 	}
 	if m.overlay == overlayBookmarks {
-		// rows: border, title, blank, then one per bookmark
-		if i := msg.Y - m.hit.y - 3; i >= 0 && i < len(m.bookmarks) {
+		// rows: border, title, blank, "more" row, then the visible bookmarks
+		row := msg.Y - m.hit.y - 4
+		if i := m.bmTop + row; row >= 0 && row < m.bookmarkListH() && i < len(m.bookmarks) {
 			m.overlay = overlayNone
 			m.jumpToBookmark(i)
 		}

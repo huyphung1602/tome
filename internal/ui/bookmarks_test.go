@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -140,5 +141,67 @@ func TestBookmarksListInBookOrderNotCreationOrder(t *testing.T) {
 	v := m.View()
 	if a, b := strings.Index(v, "Chapter 0"), strings.Index(v, "Chapter 2"); a < 0 || b < 0 || a > b {
 		t.Errorf("list not in book order:\n%s", v)
+	}
+}
+
+func manyBookmarks(t *testing.T, n int) *Model {
+	t.Helper()
+	var sb strings.Builder
+	for i := 0; i < n+20; i++ {
+		fmt.Fprintf(&sb, "<p>para %d</p>", i)
+	}
+	b := &epub.Book{Chapters: []epub.Chapter{{Path: "c.html", HTML: []byte(sb.String())}}}
+	var marks []state.Mark
+	for i := 0; i < n; i++ {
+		marks = append(marks, state.Mark{Chapter: 0, Block: i})
+	}
+	m := New(b, state.Position{Bookmarks: marks}, nil)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	keys(m, runes("'"))
+	return m
+}
+
+func TestBookmarkListScrollsAndFits(t *testing.T) {
+	m := manyBookmarks(t, 40)
+	v := m.View()
+	if m.hit.h > m.h || !strings.Contains(v, "1/40") || !strings.Contains(v, "↓ 25 more") || !strings.Contains(v, "enter jump") {
+		t.Fatalf("box %d rows on a %d-row screen:\n%s", m.hit.h, m.h, v)
+	}
+	for i := 0; i < 35; i++ {
+		keys(m, runes("j"))
+	}
+	v = m.View()
+	if !strings.Contains(v, "para 35") || !strings.Contains(v, "36/40") || !strings.Contains(v, "↑ ") {
+		t.Errorf("selection not scrolled into view:\n%s", v)
+	}
+	keys(m, runes("G"))
+	m.View()
+	if m.bmSel != 39 || !strings.Contains(m.View(), "para 39") {
+		t.Error("G should select and show the last bookmark")
+	}
+	keys(m, runes("g"))
+	if m.bmSel != 0 || m.View() == "" || m.bmTop != 0 {
+		t.Error("g should go back to the first")
+	}
+	// wheel moves the selection
+	m.Update(mouse(m.w/2, m.h/2, tea.MouseButtonWheelDown, tea.MouseActionPress))
+	if m.bmSel != 3 {
+		t.Errorf("wheel: sel %d", m.bmSel)
+	}
+}
+
+func TestBookmarkListClickAfterScroll(t *testing.T) {
+	m := manyBookmarks(t, 40)
+	for i := 0; i < 30; i++ {
+		keys(m, runes("j"))
+	}
+	m.View()
+	// click the first visible bookmark row
+	m.Update(mouse(m.hit.x+5, m.hit.y+4, tea.MouseButtonLeft, tea.MouseActionPress))
+	if m.overlay != overlayNone {
+		t.Fatal("click didn't jump")
+	}
+	if got := strings.TrimSpace(m.doc.Lines[m.caret].Plain()); got != fmt.Sprintf("para %d", m.bmTop) {
+		t.Errorf("jumped to %q, want para %d", got, m.bmTop)
 	}
 }
