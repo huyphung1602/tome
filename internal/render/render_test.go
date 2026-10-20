@@ -381,3 +381,11 @@ func TestDisplayBlockSpansInHeading(t *testing.T) {
 		t.Errorf("number lost heading style: %b", st)
 	}
 }
+
+func TestSupAndSubUseUnicodeScripts(t *testing.T) {
+	d := one(`<p>quá 10<sup class="calibre9">-30</sup> giây, 10<sup>2</sup>, CO<sub>2</sub>, 25<sup>o</sup>C, ounce<sup>1.</sup> và [6]<sup>[7]</sup></p>`, 80)
+	want := "quá 10⁻³⁰ giây, 10², CO₂, 25ᵒC, ounce¹. và [6][⁷]"
+	if got := plain(d); got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}

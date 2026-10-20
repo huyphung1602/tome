@@ -159,6 +159,7 @@ type renderer struct {
 	width   int
 	fit     func(src string, maxCols int) (cols, rows int)
 	css     CSS
+	script  int // inside <sup> or <sub>
 	chapter int
 	block   int
 	path    string
@@ -199,6 +200,9 @@ func (r *renderer) text(s string) {
 			sb.WriteByte(' ')
 		}
 		s = sb.String()
+	}
+	if r.script != scriptNone {
+		s = toScript(s, r.script)
 	}
 	if s != "" {
 		r.cur = append(r.cur, Span{s, r.style})
@@ -511,6 +515,14 @@ func (r *renderer) walk(n *html.Node) {
 		r.frames = r.frames[:len(r.frames)-1]
 	case "pre":
 		r.codeBlock(n)
+	case "sup", "sub":
+		old := r.script
+		r.script = scriptSuper
+		if tag == "sub" {
+			r.script = scriptSub
+		}
+		children()
+		r.script = old
 	case "code", "kbd", "samp", "tt":
 		withStyle(CodeString)
 	case "div", "section", "article", "main", "header", "footer", "aside", "nav",

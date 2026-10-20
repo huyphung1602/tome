@@ -117,13 +117,17 @@ func newEntry(path, title, author string, progress int, recent bool) pickEntry {
 }
 
 // fold lowercases and strips diacritics so "dam bi ghet" matches "Dám Bị Ghét".
+// NFKD also turns superscripts and subscripts back into plain characters,
+// so "10-30" finds "10⁻³⁰".
 func fold(s string) string {
 	var sb strings.Builder
-	for _, r := range norm.NFD.String(strings.ToLower(s)) {
+	for _, r := range norm.NFKD.String(strings.ToLower(s)) {
 		switch {
 		case unicode.Is(unicode.Mn, r):
 		case r == 'đ':
 			sb.WriteRune('d')
+		case r == '−': // U+2212, what NFKD makes of ⁻ and ₋
+			sb.WriteRune('-')
 		default:
 			sb.WriteRune(r)
 		}

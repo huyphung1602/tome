@@ -189,3 +189,12 @@ func TestPagingWithHLAndArrows(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchMatchesSuperscripts(t *testing.T) {
+	b := &epub.Book{Chapters: []epub.Chapter{{Path: "c.html", HTML: []byte(`<p>trong vòng 10<sup>-30</sup> giây</p>`)}}}
+	m := New(b, state.Position{}, nil)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	if n := len(m.findMatches("10-30")); n != 1 {
+		t.Errorf("10-30 matched %d times", n)
+	}
+}
