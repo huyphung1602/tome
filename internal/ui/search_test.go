@@ -173,7 +173,7 @@ func TestNoMatchesStatus(t *testing.T) {
 
 func TestPagingWithHLAndArrows(t *testing.T) {
 	m := searchModel(t)
-	page := m.bodyH() - 2
+	page := m.bodyH()
 	for _, k := range []tea.KeyMsg{runes("l"), {Type: tea.KeyRight}} {
 		top := m.top
 		m.Update(k)

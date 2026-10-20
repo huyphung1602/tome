@@ -123,10 +123,10 @@ func (m *Model) halfPage(d int) {
 	m.keepCursorOnScreen()
 }
 
-// page turns a full page; the cursor goes to the top of the new page, or
-// the bottom when paging back.
+// page turns a full page with no overlap, so every page is all new text;
+// the cursor goes to the top of the new page, or the bottom when paging back.
 func (m *Model) page(d int) {
-	m.top += d * max(1, m.bodyH()-2)
+	m.top += d * m.bodyH()
 	m.clamp()
 	so := m.scrolloff()
 	if d > 0 {

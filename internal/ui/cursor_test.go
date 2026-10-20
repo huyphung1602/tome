@@ -199,3 +199,22 @@ func TestBookmarkNoticeNamesParagraphAndShowsCursor(t *testing.T) {
 		t.Errorf("notice = %q", m.notice)
 	}
 }
+
+func TestPagesDontOverlap(t *testing.T) {
+	m := vimModel(t)
+	for i := 0; i < 3; i++ {
+		last := m.top + m.bodyH() - 1 // last line on screen
+		keys(m, runes(" "))
+		if m.top != last+1 {
+			t.Fatalf("page %d starts at line %d, previous page ended at %d", i+1, m.top, last)
+		}
+		if row := m.caret - m.top; row < 0 || row > m.scrolloff()+1 {
+			t.Errorf("cursor at row %d after paging, want the top", row)
+		}
+	}
+	top := m.top
+	keys(m, runes("b"))
+	if m.top != top-m.bodyH() {
+		t.Errorf("page back: top %d want %d", m.top, top-m.bodyH())
+	}
+}

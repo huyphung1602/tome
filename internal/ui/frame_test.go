@@ -51,7 +51,7 @@ func TestReadingFrameCappedAndCentered(t *testing.T) {
 	}
 	// paging moves by the frame, not the screen
 	keys(m, runes(" "))
-	if m.top != defaultHeight-2 {
+	if m.top != defaultHeight { // pages don't overlap
 		t.Errorf("page = %d lines", m.top)
 	}
 }
