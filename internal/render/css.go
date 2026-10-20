@@ -10,6 +10,7 @@ import (
 // properties a terminal can show.
 type ClassStyle struct {
 	Bold, Italic, Center, Hidden bool
+	Block                        bool    // display: block, so an inline element gets its own line
 	Size                         float64 // font-size in em; 0 when unset
 }
 
@@ -50,6 +51,7 @@ func ParseCSS(src string) CSS {
 				decl.Center = v == "center"
 			case "display":
 				decl.Hidden = v == "none"
+				decl.Block = v == "block" || v == "list-item" || v == "table"
 			case "font-size":
 				decl.Size = fontSize(v)
 			}
@@ -64,6 +66,7 @@ func ParseCSS(src string) CSS {
 			c.Italic = c.Italic || decl.Italic
 			c.Center = c.Center || decl.Center
 			c.Hidden = c.Hidden || decl.Hidden
+			c.Block = c.Block || decl.Block
 			if decl.Size > 0 {
 				c.Size = decl.Size
 			}
@@ -105,6 +108,7 @@ func (c CSS) style(classAttr string) ClassStyle {
 		out.Italic = out.Italic || s.Italic
 		out.Center = out.Center || s.Center
 		out.Hidden = out.Hidden || s.Hidden
+		out.Block = out.Block || s.Block
 		if s.Size > 0 {
 			out.Size = s.Size
 		}

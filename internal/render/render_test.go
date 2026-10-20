@@ -362,3 +362,22 @@ func TestCodeKeepsAuthorEmphasis(t *testing.T) {
 		t.Errorf("emphasis lost: bold=%v italic=%v\n%s", bold, italic, plain(d))
 	}
 }
+
+func TestDisplayBlockSpansInHeading(t *testing.T) {
+	css := ParseCSS(`.chapterindex { display: block; text-align: center }
+.chaptertitle1 { display: block; text-align: center }
+.dropcap { float: left; font-size: 400% }`)
+	d := RenderWith([]epub.Chapter{{Path: "c.html", HTML: []byte(
+		`<h1 class="calibre4"><span class="chapterindex">01</span><span class="chaptertitle1">Vũ trụ hình thành</span></h1>` +
+			`<p><span class="dropcap">D</span>ù cố gắng</p>`)}}, Options{Width: 30, CSS: css})
+	want := "              01\n      Vũ trụ hình thành\n      ─────────────────\n\nDù cố gắng" // (30-2)/2 and (30-17)/2
+	if got := plain(d); got != want {
+		t.Errorf("got\n%q\nwant\n%q", got, want)
+	}
+	if d.ChapterTitles[0] != "01 Vũ trụ hình thành" {
+		t.Errorf("chapter title %q", d.ChapterTitles[0])
+	}
+	if st := d.Lines[0].Spans[len(d.Lines[0].Spans)-1].Style; st&(Bold|H1) != Bold|H1 {
+		t.Errorf("number lost heading style: %b", st)
+	}
+}

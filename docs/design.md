@@ -38,6 +38,7 @@ Many books (Calibre, InDesign exports) style headings with classes on `<p>` inst
 - `font-style: italic` → italic.
 - `text-align: center` → centered.
 - `display: none` → hidden.
+- `display: block` on an inline element such as `span` → its own line inside the surrounding block, so a heading built from a number span and a title span shows them on two lines and keeps the heading style.
 - `font-size` on a `p` or `div`: 1.6em or larger is treated as `h1`, 1.3em or larger as `h2`, and 1.15em or larger and bold as `h3`.
 
 ## Code blocks (`render/code.go`)

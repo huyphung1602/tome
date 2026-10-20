@@ -350,6 +350,14 @@ func (r *renderer) walk(n *html.Node) {
 		defer func() { r.style = old }()
 	}
 
+	// an inline element styled display:block (e.g. a chapter number and
+	// title as two spans in one heading) gets its own line but stays part
+	// of the surrounding block, so the heading keeps its style
+	if cs.Block && inlineTags[n.Data] {
+		r.softBreak()
+		defer r.softBreak()
+	}
+
 	children := func() {
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			r.walk(c)
@@ -524,6 +532,22 @@ func (r *renderer) walk(n *html.Node) {
 		withStyle(Underline)
 	default:
 		children()
+	}
+}
+
+var inlineTags = map[string]bool{
+	"span": true, "a": true, "em": true, "i": true, "strong": true, "b": true, "small": true,
+	"big": true, "sup": true, "sub": true, "cite": true, "q": true, "code": true, "u": true,
+	"abbr": true, "label": true, "font": true,
+}
+
+// softBreak ends the current line inside the block being built.
+func (r *renderer) softBreak() {
+	if !r.hasContent() {
+		return
+	}
+	if last := r.cur[len(r.cur)-1].Text; !strings.HasSuffix(last, "\n") {
+		r.cur = append(r.cur, Span{Text: "\n"})
 	}
 }
 
