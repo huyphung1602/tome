@@ -108,9 +108,12 @@ type Model struct {
 	caretID   int
 	reveal    bool // something aimed at a spot this update: show the cursor
 
-	webFn    func(chapter, block int) (already bool, err error) // opens the book in the browser (w); nil disables it
+	webFn    func(chapter, block int) (already bool, err error) // opens the book in the browser (o); nil disables it
 	webSync  func(chapter, block int)                           // tells the browser where the reader is
 	lastSync [2]int
+
+	webMarks  func([][2]int) // tells the browser which paragraphs are bookmarked
+	sentMarks string
 }
 
 // isMouseFragment spots the tail of a mouse escape sequence (e.g.
@@ -146,6 +149,26 @@ func (m *Model) SetWebSync(sync func(chapter, block int)) {
 
 // WebPos is the browser's reading position, sent while it scrolls.
 type WebPos struct{ Chapter, Block int }
+
+// WebBookmark asks to toggle the bookmark on a paragraph, from the browser.
+type WebBookmark struct{ Chapter, Block int }
+
+// SetWebBookmarks makes the model report its bookmarks whenever they change.
+func (m *Model) SetWebBookmarks(fn func([][2]int)) { m.webMarks = fn; m.sentMarks = "-" }
+
+func (m *Model) syncMarks() {
+	if m.webMarks == nil {
+		return
+	}
+	list := make([][2]int, len(m.bookmarks))
+	for i, b := range m.bookmarks {
+		list[i] = [2]int{b.Chapter, b.Block}
+	}
+	if key := fmt.Sprint(list); key != m.sentMarks {
+		m.sentMarks = key
+		m.webMarks(list)
+	}
+}
 
 func (m *Model) syncWeb() {
 	if m.webSync == nil || m.doc == nil {
@@ -397,6 +420,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = tea.Batch(cmd, m.showCaret())
 	}
 	m.syncWeb()
+	m.syncMarks()
 	return m, cmd
 }
 
@@ -412,6 +436,11 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case noticeMsg:
 		if msg.id == m.noticeID {
 			m.notice = ""
+		}
+		return m, nil
+	case WebBookmark:
+		if m.doc != nil {
+			return m, m.flash(m.toggleBookmark(m.doc.Locate(msg.Chapter, msg.Block)))
 		}
 		return m, nil
 	case WebPos:

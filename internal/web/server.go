@@ -6,6 +6,7 @@ package web
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"mime"
 	"net"
@@ -30,6 +31,8 @@ type Server struct {
 	theme      Theme
 	readHeight int
 	onPos      func(chapter, block int) // the browser scrolled
+	onMark     func(chapter, block int) // the browser toggled a bookmark
+	marks      string                   // bookmarks as JSON, [[chapter, block], ...]
 	pos        string                   // last position sent to browsers, "chapter,block"
 	clients    map[chan string]bool     // open event streams
 }
@@ -56,6 +59,25 @@ func (s *Server) SetReadHeight(n int) {
 
 // SetOnPosition is called when the reader scrolls in the browser.
 func (s *Server) SetOnPosition(fn func(chapter, block int)) { s.mu.Lock(); s.onPos = fn; s.mu.Unlock() }
+
+// SetOnBookmark is called when the reader toggles a bookmark in the browser.
+func (s *Server) SetOnBookmark(fn func(chapter, block int)) {
+	s.mu.Lock()
+	s.onMark = fn
+	s.mu.Unlock()
+}
+
+// SetBookmarks tells open pages which paragraphs are bookmarked.
+func (s *Server) SetBookmarks(marks [][2]int) {
+	if marks == nil {
+		marks = [][2]int{}
+	}
+	data, _ := json.Marshal(marks)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.marks = string(data)
+	s.broadcast("bookmarks", s.marks)
+}
 
 // Position tells open pages to show chapter/block.
 func (s *Server) Position(chapter, block int) {
@@ -137,7 +159,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	book, token := s.book, s.token
 	s.mu.Unlock()
 	rest, ok := strings.CutPrefix(r.URL.Path, "/"+token+"/")
-	if !ok || token == "" || book == nil || r.Method != http.MethodGet {
+	writes := rest == "bookmark" // the one endpoint that changes state takes POST
+	if !ok || token == "" || book == nil || (writes && r.Method != http.MethodPost) || (!writes && r.Method != http.MethodGet) {
 		http.NotFound(w, r)
 		return
 	}
@@ -149,6 +172,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write(s.readerPage(book))
 	case rest == "events":
 		s.events(w, r)
+	case rest == "bookmark":
+		var c, b int
+		if _, err := fmt.Sscanf(r.URL.Query().Get("c")+" "+r.URL.Query().Get("b"), "%d %d", &c, &b); err != nil {
+			http.Error(w, "bad position", http.StatusBadRequest)
+			return
+		}
+		s.mu.Lock()
+		fn := s.onMark
+		s.mu.Unlock()
+		if fn != nil {
+			fn(c, b)
+		}
+		w.WriteHeader(http.StatusNoContent)
 	case rest == "pos":
 		var c, b int
 		if _, err := fmt.Sscanf(r.URL.Query().Get("c")+" "+r.URL.Query().Get("b"), "%d %d", &c, &b); err != nil {
@@ -172,6 +208,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		st := book.Styles[i]
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		w.Write([]byte(rewriteCSS(st.Text, st.Path, "/"+token+"/res/")))
+	case strings.HasPrefix(rest, "fonts/"):
+		data, err := fontFiles.ReadFile(rest)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "font/woff2")
+		w.Header().Set("Cache-Control", "max-age=31536000, immutable") // bundled, never changes
+		w.Write(data)
 	case strings.HasPrefix(rest, "res/"):
 		name := strings.TrimPrefix(rest, "res/")
 		data, err := book.ReadFile(name)
@@ -208,11 +253,14 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	ch := make(chan string, 16)
 	s.mu.Lock()
 	s.clients[ch] = true
-	pos := s.pos
+	pos, marks := s.pos, s.marks
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); delete(s.clients, ch); s.mu.Unlock() }()
 	if pos != "" {
 		fmt.Fprintf(w, "event: pos\ndata: %s\n\n", pos)
+	}
+	if marks != "" {
+		fmt.Fprintf(w, "event: bookmarks\ndata: %s\n\n", marks)
 	}
 	fl.Flush()
 	for {

@@ -60,6 +60,7 @@ func buildPage(book *epub.Book, base string, theme Theme, readHeight int) []byte
 		title = "tome"
 	}
 	r := strings.NewReplacer(
+		"{{FONTS}}", fontFaces(base),
 		"{{TITLE}}", html.EscapeString(title),
 		"{{TOC}}", toc.String(),
 		"{{DATA}}", strings.ReplaceAll(string(data), "</", `<\/`),
@@ -117,9 +118,12 @@ const pageTemplate = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{TITLE}}</title>
 <style>
-:root { color-scheme: light dark; --font: Georgia, "Times New Roman", serif; --size: 19px; --measure: 38rem; }
+{{FONTS}}
+:root { color-scheme: light dark; --font: Georgia, "Times New Roman", serif; --size: 19px; --measure: 680px; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden; }
+/* grayscale antialiasing: lighter, crisper strokes than subpixel on macOS */
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
 body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 
@@ -130,16 +134,35 @@ body.no-toc #frame { grid-template-columns: var(--measure); }
 #bar, #status { grid-column: -2; display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); }
 #bar .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #bar .buttons { display: flex; gap: 1.5rem; white-space: nowrap; }
+#bar .buttons button { display: inline-flex; align-items: baseline; gap: .45rem; }
 #bar .buttons button:hover { color: var(--fg); }
+/* the key, as a small keycap */
+kbd { font: 11px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; min-width: 1.6em; text-align: center; padding: .2em .4em;
+  border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; color: var(--fg); }
+#bar .buttons button:hover kbd { border-color: var(--muted); }
 #toc { grid-row: 2; width: 16rem; overflow-y: auto; border-right: 1px solid var(--line); padding-right: 1.5rem; scrollbar-width: none; }
 #toc::-webkit-scrollbar, #page::-webkit-scrollbar { display: none; }
 body.no-toc #toc { display: none; }
 #toc a { display: block; padding: .15rem 0 .15rem calc(var(--depth) * 1.1rem); color: var(--muted); text-decoration: none; font-size: 13px; line-height: 1.4; }
 #toc a:hover { color: var(--fg); }
 #toc a.current { color: var(--fg); font-weight: 600; }
-#page { grid-row: 2; grid-column: -2; overflow-y: auto; scrollbar-width: none; }
+#page { grid-row: 2; grid-column: -2; overflow-y: auto; padding-left: 2.5rem; margin-left: -2.5rem; /* room for bookmark ribbons */ scrollbar-width: none; }
 #status { grid-row: 3; font-size: 13px; }
 
+#find { display: none; gap: .4rem; align-items: baseline; }
+body.finding #find { display: inline-flex; } body.finding #where { display: none; }
+#q { font: inherit; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--line); outline: none; width: 16rem; padding: 0 0 1px; }
+#note { margin-left: 1rem; }
+.popup { position: absolute; z-index: 5; display: none; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 1rem 1.25rem; box-shadow: 0 8px 30px rgba(0,0,0,.18); }
+.popup.open { display: block; }
+.popup h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 .5rem; }
+#marks { width: 30rem; max-height: 60vh; overflow-y: auto; }
+#markList .row { display: grid; grid-template-columns: 1fr auto; gap: .75rem; padding: .35rem .5rem; border-radius: 6px; cursor: pointer; }
+#markList .row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+#markList .ch { color: var(--muted); font-size: 12px; } #markList .snip { display: block; }
+#markList .del { color: var(--muted); } #markList .del:hover { color: var(--mark); }
+#marks .hint { color: var(--muted); font-size: 12px; margin: .75rem 0 0; }
 #settings { position: absolute; z-index: 5; display: none; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
   padding: 1rem 1.25rem; box-shadow: 0 8px 30px rgba(0,0,0,.18); min-width: 15rem; }
 #settings.open { display: block; }
@@ -158,12 +181,16 @@ body.no-toc #toc { display: none; }
 <body>
 <div id="frame">
   <div id="bar"><span class="title">{{TITLE}}</span><span class="buttons">
-    <button id="tocBtn" title="contents (t)">t contents</button>
-    <button id="gear" title="theme and font">⚙ settings</button></span></div>
+    <button id="tocBtn" title="contents (t)"><kbd>t</kbd>contents</button>
+    <button id="findBtn" title="search (/)"><kbd>/</kbd>search</button>
+    <button id="marksBtn" title="bookmarks (')"><kbd>'</kbd>bookmarks</button>
+    <button id="gear" title="theme and font"><kbd>,</kbd>settings</button></span></div>
   <nav id="toc">{{TOC}}</nav>
   <div id="page"><div id="book"></div></div>
-  <div id="status"><span id="where"></span><span id="sync"></span></div>
+  <div id="status"><span><span id="where"></span><span id="find"><span>/</span><input id="q" autocomplete="off" spellcheck="false"><span id="count"></span></span><span id="note"></span></span><span id="sync"></span></div>
 </div>
+<div id="marks" class="popup"><h2>bookmarks</h2><div id="markList"></div>
+  <p class="hint">B bookmarks the paragraph at the top · or click the left margin next to a paragraph</p></div>
 <div id="settings">
   <h2>theme</h2><div class="row" data-key="theme"><button data-v="terminal">terminal</button><button data-v="paper">paper</button><button data-v="night">night</button></div>
   <h2>font</h2><div class="row" data-key="font"><button data-v="mono">mono</button><button data-v="serif">serif</button><button data-v="sans">sans</button></div>
@@ -178,8 +205,8 @@ const THEMES = {
 };
 const FONTS = {
   mono:  { font: '"SF Mono", Menlo, Monaco, "Cascadia Mono", Consolas, monospace', size: 16, measure: "72ch" },
-  serif: { font: 'Georgia, "Times New Roman", "Noto Serif", serif', size: 19, measure: "38rem" },
-  sans:  { font: 'system-ui, -apple-system, "Segoe UI", sans-serif', size: 18, measure: "38rem" },
+  serif: { font: 'Literata, Georgia, "Times New Roman", serif', size: 18, measure: "680px" },
+  sans:  { font: '"Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif', size: 17, measure: "680px" },
 };
 const store = { get(k, d) { try { return localStorage.getItem("tome." + k) || d; } catch { return d; } },
                 set(k, v) { try { localStorage.setItem("tome." + k, v); } catch {} } };
@@ -195,6 +222,16 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85em; }
 table { max-width: 100%; display: block; overflow-x: auto; }
 .tome-chapter { padding-bottom: 4rem; }
 [id] { scroll-margin-top: 1rem; }
+::highlight(tome-hit) { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+::highlight(tome-cur) { background: var(--accent); color: var(--bg); }
+.tome-bm, .tome-hover { position: relative; }
+/* a ribbon in the margin, at the first line */
+:is(.tome-bm, .tome-hover)::before { content: ""; position: absolute; left: calc(-1.5rem - var(--bm-x, 0px)); top: calc((1lh - 14px) / 2);
+  width: 8px; height: 14px; background: var(--mark); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%); transition: opacity .15s; }
+/* the paragraph under the mouse shows a faint one where a click bookmarks it */
+.tome-hover:not(.tome-bm)::before { background: var(--muted); opacity: .3; }
+.tome-hover.tome-edge:not(.tome-bm)::before { background: var(--mark); opacity: .75; }
+.tome-bm.tome-edge::before { opacity: .35; } /* fading: a click removes it */
 ` + "`" + `;
 root.appendChild(base);
 for (const href of data.sheets) { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = href; root.appendChild(l); }
@@ -234,6 +271,7 @@ function apply() {
   for (const row of document.querySelectorAll("#settings .row"))
     for (const b of row.children) b.classList.toggle("on", b.dataset.v === store.get(row.dataset.key, row.dataset.key === "theme" ? "terminal" : "serif"));
   layout();
+  placeMarks();
 }
 // the reading frame: at most data.lines lines tall, like tome's
 let lineH = 32;
@@ -356,8 +394,194 @@ function connect() {
   es.addEventListener("open", () => { label.textContent = "synced with tome"; });
   es.addEventListener("pos", e => { const [c, b] = e.data.split(",").map(Number); jump(c, b); });
   es.addEventListener("book", () => location.reload());
+  es.addEventListener("bookmarks", e => {
+    const before = marks ? marks.length : null;
+    marks = JSON.parse(e.data);
+    renderMarks();
+    if (before !== null && before !== marks.length) note(marks.length > before ? "bookmarked" : "bookmark removed");
+  });
   es.addEventListener("error", () => { label.textContent = "tome closed"; });
 }
+
+// ---- status notes
+let noteTimer = 0;
+function note(msg) {
+  const el = document.getElementById("note"); el.textContent = msg;
+  clearTimeout(noteTimer); noteTimer = setTimeout(() => { el.textContent = ""; }, 2500);
+}
+
+// ---- bookmarks, shared with tome (tome stores them; the page shows and toggles)
+let marks = null;
+function elementFor(c, b) {
+  const sec = root.getElementById("c" + c); if (!sec) return null;
+  let target = null;
+  for (const el of sec.querySelectorAll("[data-tb]")) { if (+el.dataset.tb <= b) target = el; else break; }
+  return target;
+}
+function chapterOf(el) {
+  let title = "";
+  for (let i = 0; i < targets.length; i++) {
+    const t = targets[i];
+    if (t && (t === el || t.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) title = links[i].textContent;
+  }
+  return title;
+}
+// ribbons sit in the margin left of the column, wherever the book indents
+// the element itself
+function placeMark(el) {
+  const left = page.getBoundingClientRect().left + parseFloat(getComputedStyle(page).paddingLeft);
+  el.style.setProperty("--bm-x", (el.getBoundingClientRect().left - left) + "px");
+}
+function placeMarks() { for (const el of root.querySelectorAll(".tome-bm")) placeMark(el); }
+addEventListener("resize", placeMarks);
+
+function renderMarks() {
+  for (const el of root.querySelectorAll(".tome-bm")) el.classList.remove("tome-bm");
+  for (const [c, b] of marks) { const el = elementFor(c, b); if (el) el.classList.add("tome-bm"); }
+  placeMarks();
+  const list = document.getElementById("markList");
+  list.innerHTML = "";
+  if (!marks.length) { list.innerHTML = '<p class="hint">no bookmarks yet</p>'; return; }
+  marks.forEach(([c, b]) => {
+    const el = elementFor(c, b);
+    const row = document.createElement("div"); row.className = "row";
+    const text = document.createElement("span");
+    const ch = document.createElement("span"); ch.className = "ch"; ch.textContent = el ? chapterOf(el) : "";
+    const sn = document.createElement("span"); sn.className = "snip";
+    sn.textContent = el ? el.textContent.trim().replace(/\s+/g, " ").slice(0, 90) : c + ":" + b;
+    text.append(ch, sn);
+    const del = document.createElement("button"); del.className = "del"; del.textContent = "×"; del.title = "delete";
+    del.addEventListener("click", e => { e.stopPropagation(); toggleMark(c, b); });
+    row.append(text, del);
+    row.addEventListener("click", () => { closePopups(); jump(c, b); report(); });
+    list.append(row);
+  });
+}
+function toggleMark(c, b) { fetch(data.base + "bookmark?c=" + c + "&b=" + b, { method: "POST" }).catch(() => note("tome isn't running")); }
+function report() { setTimeout(() => { const p = blockAt(); if (p) fetch(data.base + "pos?c=" + p.c + "&b=" + p.b).catch(() => {}); }, 50); }
+// a click in the left margin toggles the paragraph next to it, like tome
+function marginBlock(e) {
+  const box = host.getBoundingClientRect(), edge = e.clientX < box.left;
+  const el = root.elementFromPoint(edge ? box.left + 12 : e.clientX, e.clientY);
+  return { blk: el && el.closest("[data-tb]"), edge };
+}
+page.addEventListener("click", e => {
+  const { blk, edge } = marginBlock(e); if (!edge || !blk) return;
+  toggleMark(+blk.closest("section").id.slice(1), +blk.dataset.tb);
+});
+// hovering shows where that click goes: a faint ribbon beside the paragraph,
+// stronger with a pointer once the mouse is in the margin
+let hovered = null;
+function hover(blk, edge) {
+  if (hovered !== blk) {
+    if (hovered) hovered.classList.remove("tome-hover", "tome-edge");
+    hovered = blk;
+    if (blk) { blk.classList.add("tome-hover"); placeMark(blk); }
+  }
+  if (blk) blk.classList.toggle("tome-edge", edge);
+  const on = !!blk && edge;
+  page.style.cursor = on ? "pointer" : "";
+  page.title = on ? (blk.classList.contains("tome-bm") ? "remove bookmark" : "bookmark this paragraph (B)") : "";
+}
+page.addEventListener("mousemove", e => { const { blk, edge } = marginBlock(e); hover(blk, edge); });
+page.addEventListener("mouseleave", () => hover(null, false));
+function openPopup(id, button) {
+  const pop = document.getElementById(id), r = document.getElementById(button).getBoundingClientRect();
+  const wasOpen = pop.classList.contains("open");
+  closePopups();
+  if (wasOpen) return;
+  pop.style.top = (r.bottom + 8) + "px"; pop.style.right = (innerWidth - r.right) + "px";
+  pop.classList.add("open");
+}
+function closePopups() { for (const p of document.querySelectorAll(".popup, #settings")) p.classList.remove("open"); }
+document.getElementById("marksBtn").addEventListener("click", e => { e.stopPropagation(); openPopup("marks", "marksBtn"); });
+document.getElementById("marks").addEventListener("click", e => e.stopPropagation());
+document.addEventListener("click", closePopups);
+
+// ---- search, "smart accent" like tome: no accents typed = accents ignored
+const hasHL = typeof Highlight !== "undefined" && CSS.highlights;
+let hits = [], cur = -1, index = null;
+function fold(s, keepMarks) {
+  s = s.normalize("NFD").toLowerCase();
+  if (!keepMarks) s = s.replace(/[̀-ͯ]/g, "").replace(/đ/g, "d");
+  return s;
+}
+// one string for the whole book, each character mapped back to its text node
+function buildIndex(keepMarks) {
+  const chars = [], nodes = [], offs = [];
+  const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+  let prevBlock = null, lastSpace = true;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const blk = n.parentElement && n.parentElement.closest("p, li, h1, h2, h3, h4, h5, h6, pre, td, th, div, blockquote, figcaption, dt, dd");
+    if (blk !== prevBlock && !lastSpace) { chars.push(" "); nodes.push(n); offs.push(0); lastSpace = true; }
+    prevBlock = blk;
+    const t = n.data;
+    for (let i = 0; i < t.length; i++) {
+      if (/\s/.test(t[i])) { if (!lastSpace) { chars.push(" "); nodes.push(n); offs.push(i); lastSpace = true; } continue; }
+      for (const f of fold(t[i], keepMarks)) { chars.push(f); nodes.push(n); offs.push(i); }
+      lastSpace = false;
+    }
+  }
+  return { text: chars.join(""), nodes, offs, keep: keepMarks };
+}
+function search(text) {
+  text = text.trim().replace(/\s+/g, " ");
+  hits = []; cur = -1;
+  if (text) {
+    const keep = fold(text, true) !== fold(text, false);
+    if (!index || index.keep !== keep) index = buildIndex(keep);
+    const needle = fold(text, keep);
+    for (let at = index.text.indexOf(needle); at >= 0 && hits.length < 3000; at = index.text.indexOf(needle, at + needle.length)) {
+      const end = at + needle.length - 1, r = document.createRange();
+      r.setStart(index.nodes[at], index.offs[at]);
+      r.setEnd(index.nodes[end], Math.min(index.nodes[end].data.length, index.offs[end] + 1));
+      hits.push(r);
+    }
+  }
+  if (hasHL) CSS.highlights.set("tome-hit", new Highlight(...hits));
+  // start from the first hit at or after the top of the frame
+  const top = page.getBoundingClientRect().top;
+  cur = hits.findIndex(r => r.getBoundingClientRect().top >= top - 2);
+  if (cur < 0 && hits.length) cur = 0;
+  showHit();
+}
+function showHit() {
+  const count = document.getElementById("count");
+  if (!hits.length) { count.textContent = q.value.trim() ? "no matches" : ""; if (hasHL) CSS.highlights.delete("tome-cur"); return; }
+  count.textContent = (cur + 1) + "/" + hits.length;
+  const r = hits[cur];
+  if (hasHL) CSS.highlights.set("tome-cur", new Highlight(r));
+  const rect = r.getBoundingClientRect(), box = page.getBoundingClientRect();
+  if (rect.top < box.top || rect.bottom > box.bottom) page.scrollTop += rect.top - box.top - box.height / 3;
+}
+function step(d) { if (!hits.length) return; cur = (cur + d + hits.length) % hits.length; showHit(); }
+const q = document.getElementById("q");
+function openFind() { document.body.classList.add("finding"); q.focus(); q.select(); }
+function closeFind() {
+  document.body.classList.remove("finding"); q.value = ""; hits = []; cur = -1; q.blur();
+  document.getElementById("count").textContent = "";
+  if (hasHL) { CSS.highlights.delete("tome-hit"); CSS.highlights.delete("tome-cur"); }
+}
+let typing = 0;
+q.addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(() => search(q.value), 150); });
+q.addEventListener("keydown", e => {
+  e.stopPropagation();
+  if (e.key === "Enter") { e.preventDefault(); if (!hits.length) search(q.value); else step(e.shiftKey ? -1 : 1); }
+  if (e.key === "Escape") { e.preventDefault(); closeFind(); }
+});
+document.getElementById("findBtn").addEventListener("click", e => { e.stopPropagation(); openFind(); });
+
+// keys for search and bookmarks (the page keys above handle paging)
+addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target === q) return;
+  if (e.key === "/") { e.preventDefault(); openFind(); }
+  else if (e.key === "n" && hits.length) step(1);
+  else if (e.key === "N" && hits.length) step(-1);
+  else if (e.key === "B") { const p = blockAt(); if (p) toggleMark(p.c, p.b); }
+  else if (e.key === "'") { e.preventDefault(); openPopup("marks", "marksBtn"); }
+  else if (e.key === ",") gear.click();
+  else if (e.key === "Escape") { closePopups(); if (hits.length || document.body.classList.contains("finding")) closeFind(); }
+});
 
 apply();
 Promise.all([...root.querySelectorAll("link")].map(l => new Promise(r => { l.onload = l.onerror = r; }))).then(() => {

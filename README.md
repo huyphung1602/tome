@@ -18,7 +18,7 @@ Open a book, and tome gives you a quiet page: one readable column, a table of co
 - **Saved progress**: each book reopens at the paragraph you were reading, even after a window resize.
 - **Search and bookmarks**: find any phrase in the book, bookmark paragraphs, and jump back to them later.
 - **Keyboard and mouse**: Vim keys, clicks and scrolling all work. Drag over text to copy clean paragraphs.
-- **Browser view**: press `o`, or click the book title, to open the book in your browser at the paragraph you're reading. Scrolling in either one moves the other. The page has the same calm frame, with a terminal theme that takes your terminal's colors, a light and a dark theme, and mono, serif or sans text.
+- **Browser view**: press `o`, or click the book title, to open the book in your browser at the paragraph you're reading. Scrolling in either one moves the other. The page has the same calm frame, with a terminal theme that takes your terminal's colors, a light and a dark theme, and mono, serif or sans text. Search and bookmarks work there too, and bookmarks are shared with tome.
 
 ### Inline images
 
@@ -95,4 +95,4 @@ Push a tag like `v1.0.0` and GitHub Actions builds every platform and publishes 
 
 ## License
 
-[MIT](LICENSE). Screenshots show [Game Programming Patterns](https://gameprogrammingpatterns.com) by Robert Nystrom.
+[MIT](LICENSE). The browser view bundles [Literata](https://github.com/googlefonts/literata) and [Be Vietnam Pro](https://github.com/bettergui/BeVietnamPro) under the [SIL Open Font License](internal/web/fonts/). Screenshots show [Game Programming Patterns](https://gameprogrammingpatterns.com) by Robert Nystrom.

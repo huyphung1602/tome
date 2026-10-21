@@ -157,7 +157,8 @@ func (a *app) read(file string, fromList bool) (quitAll bool, err error) {
 	m.SetBookList(fromList)
 	a.web.SetReadHeight(prefs.ReadHeight)
 	m.SetWebSync(a.web.Position)
-	a.web.Warm(book) // the first "open in browser" shouldn't wait for the server
+	m.SetWebBookmarks(a.web.SetBookmarks) // bookmarks are shared with the browser view
+	a.web.Warm(book)                      // the first "open in browser" shouldn't wait for the server
 	m.SetWeb(func(chapter, block int) (bool, error) {
 		url, err := a.web.Open(book)
 		if err != nil {
@@ -190,8 +191,10 @@ func (a *app) read(file string, fromList bool) (quitAll bool, err error) {
 	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	// the browser's scrolling moves the book here too
 	a.web.SetOnPosition(func(chapter, block int) { prog.Send(ui.WebPos{Chapter: chapter, Block: block}) })
+	a.web.SetOnBookmark(func(chapter, block int) { prog.Send(ui.WebBookmark{Chapter: chapter, Block: block}) })
 	_, err = prog.Run()
 	a.web.SetOnPosition(nil)
+	a.web.SetOnBookmark(nil)
 	os.Stdout.Write(m.CleanupGraphics())
 	if err != nil {
 		return true, err

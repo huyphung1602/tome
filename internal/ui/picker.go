@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/text/unicode/norm"
 
@@ -351,10 +352,18 @@ func (p *Picker) entryRow(e pickEntry, sel bool, width int) string {
 
 	t := title
 	if sel {
-		t = bold.Render(title)
+		// the selected book takes the theme's accent, like links and keywords
+		mark, t = pickStyle.Render(mark), pickStyle.Render(title)
 	}
 	return mark + t + faint.Render(author) + pad + "  " + faint.Render(right)
 }
+
+var pickStyle = func() lipgloss.Style {
+	if noColor {
+		return bold
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Bold(true) // blue
+}()
 
 func (p *Picker) tilde(path string) string {
 	if p.home != "" && (path == p.home || strings.HasPrefix(path, p.home+string(filepath.Separator))) {

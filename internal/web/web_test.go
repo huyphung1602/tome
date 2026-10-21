@@ -199,3 +199,20 @@ func TestWarmAndConnected(t *testing.T) {
 		t.Error("an open event stream should count as connected")
 	}
 }
+
+func TestBundledFonts(t *testing.T) {
+	s := New()
+	defer s.Close()
+	base, _ := s.Open(testBook(t))
+	_, _, page := get(t, base)
+	if !strings.Contains(page, `font-family: "Literata"`) || !strings.Contains(page, base[strings.Index(base[7:], "/")+7:]+"fonts/literata.woff2") {
+		t.Error("page doesn't declare the bundled fonts")
+	}
+	code, ctype, body := get(t, base+"fonts/bevietnampro-regular.woff2")
+	if code != 200 || ctype != "font/woff2" || !strings.HasPrefix(body, "wOF2") {
+		t.Errorf("font: %d %s %q", code, ctype, body[:min(4, len(body))])
+	}
+	if code, _, _ := get(t, base+"fonts/../server.go"); code != 404 {
+		t.Errorf("path escape: %d", code)
+	}
+}
