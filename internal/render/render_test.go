@@ -389,3 +389,36 @@ func TestSupAndSubUseUnicodeScripts(t *testing.T) {
 		t.Errorf("got %q want %q", got, want)
 	}
 }
+
+func TestBlockMapMatchesRenderNumbering(t *testing.T) {
+	ch := epub.Chapter{Path: "c.html", HTML: []byte(`<body><h1>Title</h1><div>loose text<p>one</p></div>` +
+		`<p>two <b>bold</b></p><ul><li>a</li><li>b</li></ul><pre>code</pre><img src="x.png" alt="x"/><blockquote><p>q</p></blockquote></body>`)}
+	d := RenderWith([]epub.Chapter{ch}, Options{Width: 40})
+	doc, nodes := BlockMap(ch, nil)
+	if doc == nil {
+		t.Fatal("no doc")
+	}
+	// the text of each mapped element must be what tome shows for that block
+	byBlock := map[int]string{}
+	for _, l := range d.Lines {
+		if !l.Blank() && !l.Deco && byBlock[l.Block] == "" {
+			byBlock[l.Block] = strings.TrimSpace(strings.Trim(l.Plain(), "│•╭─ "))
+		}
+	}
+	seen := map[int]bool{}
+	for n, b := range nodes {
+		seen[b] = true
+		got := strings.Join(strings.Fields(nodeText(n)), " ")
+		if n.Data == "img" {
+			got = "[Image: x]"
+		}
+		if want := byBlock[b]; want == "" || !strings.HasPrefix(got, strings.Fields(want)[0]) {
+			t.Errorf("block %d: element <%s> %q, tome shows %q", b, n.Data, got, want)
+		}
+	}
+	for b := range byBlock {
+		if !seen[b] {
+			t.Errorf("block %d (%q) has no element", b, byBlock[b])
+		}
+	}
+}

@@ -3,6 +3,7 @@ package epub
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -128,5 +129,33 @@ func TestOpenNotEPUB(t *testing.T) {
 	os.WriteFile(p, []byte("nope"), 0o644)
 	if _, err := Open(p); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestNestPartsInFlatTOC(t *testing.T) {
+	toc := []TOCEntry{
+		{Title: "Lời giới thiệu"}, {Title: "PHẦN I: LẠC VÀO VŨ TRỤ"}, {Title: "01. Vũ trụ hình thành"},
+		{Title: "02. Hệ mặt trời"}, {Title: "Phần II: Kích thước"}, {Title: "04. Đo lường"},
+	}
+	nestParts(toc)
+	got := []int{}
+	for _, e := range toc {
+		got = append(got, e.Depth)
+	}
+	if fmt.Sprint(got) != "[0 0 1 1 0 1]" {
+		t.Errorf("depths %v", got)
+	}
+
+	// one part only, or an already nested list: untouched
+	single := []TOCEntry{{Title: "Part One"}, {Title: "Chapter 1"}}
+	nestParts(single)
+	nested := []TOCEntry{{Title: "Part I"}, {Title: "Ch 1", Depth: 1}, {Title: "Part II"}, {Title: "Partial truths"}}
+	nestParts(nested)
+	if single[1].Depth != 0 || nested[3].Depth != 0 {
+		t.Errorf("changed lists it shouldn't: %+v %+v", single, nested)
+	}
+	// "Partial" must not count as a part
+	if partTitle.MatchString("Partial truths") || !partTitle.MatchString("BOOK III: Dawn") {
+		t.Error("part title matcher")
 	}
 }

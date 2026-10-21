@@ -128,11 +128,11 @@ func TestMenuEntriesDependOnContext(t *testing.T) {
 		}
 		return strings.Join(l, ",")
 	}
-	if got := labels(); got != "keybinds=?,hide contents=t,search=/,bookmarks=',images=i,quit=q" {
+	if got := labels(); got != "keybinds=?,hide contents=t,search=/,bookmarks=',images=i,quit=esc" {
 		t.Errorf("standalone menu = %s", got)
 	}
 	m.SetBookList(true)
-	if got := labels(); !strings.HasSuffix(got, "back to book list=q,quit=ctrl+c") {
+	if got := labels(); !strings.HasSuffix(got, "back to book list=esc,quit=ctrl+c") {
 		t.Errorf("book-list menu = %s", got)
 	}
 	keys(m, runes("m"))

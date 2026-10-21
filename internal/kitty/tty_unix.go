@@ -27,7 +27,7 @@ func Probe(timeout time.Duration) Caps {
 	}
 	defer term.Restore(fd, old)
 
-	query := "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[16t\x1b[c"
+	query := "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[16t" + ColorQuery + "\x1b[c"
 	if _, err := unix.Write(fd, []byte(query)); err != nil {
 		return caps
 	}

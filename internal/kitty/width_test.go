@@ -60,3 +60,13 @@ func TestParseReply(t *testing.T) {
 		t.Errorf("id color = %q", PlaceholderRow(0x010203, 1, 0))
 	}
 }
+
+func TestParseColorReplies(t *testing.T) {
+	c := parseReply([]byte("\x1b]10;rgb:e6e6/d7d7/adad\x1b\\\x1b]11;rgb:24/24/24\x07\x1b]4;5;rgb:c6/78/dd\x1b\\\x1b[?62c"))
+	if c.Colors.FG != "#e6d7ad" || c.Colors.BG != "#242424" || c.Colors.Palette[5] != "#c678dd" {
+		t.Errorf("colors = %+v", c.Colors)
+	}
+	if c := parseReply([]byte("\x1b[?1c")); c.Colors.FG != "" || len(c.Colors.Palette) != 0 {
+		t.Errorf("no replies should give no colors: %+v", c.Colors)
+	}
+}

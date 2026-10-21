@@ -67,6 +67,20 @@ Images use kitty **Unicode placeholders**. tome uploads an image once, with a vi
 
 When the mouse wheel scrolls fast, especially through a multiplexer, a mouse escape sequence such as `ESC[<65;50;10M` can arrive split across reads. Bubble Tea then reports the tail as typed keys, and its `<` would shrink the sidebar. tome drops any multi-character key input made only of `<`, `[`, digits, `;` and `M`/`m` that looks like such a fragment, both in the reader and in the book picker.
 
+## Browser view (`internal/web`)
+
+`o`, or a click on the book title in the button bar, opens the book being read in the default browser, at the paragraph at the top of tome's screen. The launcher runs in the background and its errors are reported; the link is also copied to the clipboard in case the browser doesn't come to the front. When a book opens, tome starts a small HTTP server in the background and builds the page (well under a second even for large books), so the first `o` is instant. If a browser tab is already following tome, `o` doesn't open another tab; it moves that tab to the current paragraph and says so. The server lives as long as tome: it listens on 127.0.0.1 on a random port, and every URL carries a random 128-bit token, so other pages and users can't read the book. Opening another book from the picker swaps what the server shows, and open pages reload with it.
+
+**Content.** Each chapter's `<body>` is rewritten for the browser: scripts, embeds, forms, comments, event handlers and `javascript:` URLs are removed; element ids get a per-chapter prefix (`c3-intro`) so chapters can share one document; links into the book become in-page anchors, links with any other scheme are left alone (http opens a new tab); images, fonts and stylesheets are served from the EPUB, with `url()` in CSS rewritten. The book sits in a shadow root with its own stylesheets, so its CSS can't break the frame around it.
+
+**Frame.** Like tome: a button bar, the contents (dimmed except the current entry, indented by level), a reading column of about 72 characters, and a status line with chapter and progress, centered as one group. The column is at most `read_height` lines tall (36 by default) and scrolls inside the frame. `space`/`b`, arrows and `h`/`l` turn whole pages, `j`/`k` scroll a line, `t` toggles the contents.
+
+**Themes and fonts** (⚙, saved in the browser): *terminal* uses the colors tome read from the terminal at startup (OSC 10/11 for text and background, OSC 4 for the ANSI colors tome uses for headings, code and bookmarks), falling back to paper or night when the terminal didn't answer; *paper* and *night* are fixed reading themes. Fonts are system fonts with full Vietnamese coverage: mono (like the terminal), serif (Georgia) and sans. The theme's colors and font override the book's, so every book reads the same way.
+
+**Sync.** Positions are `(chapter, block)`, the unit tome saves. The web view parses each chapter with tome's renderer (`render.BlockMap`), which records the element holding each block's first text, and tags those elements `data-tb`, so both sides count blocks the same way; across 84 books 98% of blocks get their own element and the rest resolve to the nearest earlier one. tome reports its position after every update that changes it; the server pushes it to pages over server-sent events and the page scrolls there. The page reports the block at the top of its frame (the innermost tagged element starting at or above that line) after scrolling settles, and tome jumps there. Each side ignores the echo of a move the other side caused.
+
+**Contents hierarchy.** When a book's contents list is completely flat, entries titled like parts ("PHẦN I", "Part Two", "Book 3", "Quyển 1") become parents of the entries after them, in tome and in the browser. Lists with real levels are left alone.
+
 ## Overlays (`internal/ui`)
 
 The overlays follow herdr's approach. tome draws the full reading view first, then splices a bordered box over it, cutting the underlying rows at display-cell positions. Only one overlay is open at a time: the menu (anchored above `● menu`), the keybinding help, or the image viewer. While an overlay is open, it receives every key, and clicking outside it closes it.
@@ -107,7 +121,9 @@ The menu lists only what applies right now, each item with its shortcut:
 - show or hide contents (`t`)
 - search (`/`) and bookmarks (`'`)
 - images (`i`), only when the book has images
-- back to book list (`q`) and quit (`ctrl+c`) when the book was opened from the picker, or just quit (`q`) otherwise
+- back to book list (`esc`) and quit (`ctrl+c`) when the book was opened from the picker, or just quit (`esc`) otherwise
+
+`esc` steps back one level everywhere: it closes an overlay, leaves the contents, clears a search or a selection, and only then leaves the book (back to the picker, or out of tome when the book was opened directly). In the picker it clears the filter, then quits. `q` still leaves a book, and `ctrl+c` quits from anywhere.
 
 ## State (`internal/state`)
 

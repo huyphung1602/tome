@@ -26,11 +26,26 @@ const placeholder = '\U0010EEEE'
 type Caps struct {
 	Graphics     bool // answered the kitty graphics query with OK
 	CellW, CellH int  // cell size in pixels, 0 when unknown
+	Colors       Colors
 }
+
+// Colors are the terminal's theme colors as "#rrggbb", "" when unknown.
+// Palette holds the ANSI colors tome uses (1-6).
+type Colors struct {
+	FG, BG  string
+	Palette map[int]string
+}
+
+// ColorQuery asks for the default foreground (OSC 10), background (OSC 11)
+// and ANSI colors 1-6 (OSC 4).
+const ColorQuery = "\x1b]10;?\x1b\\\x1b]11;?\x1b\\" +
+	"\x1b]4;1;?\x1b\\\x1b]4;2;?\x1b\\\x1b]4;3;?\x1b\\\x1b]4;4;?\x1b\\\x1b]4;5;?\x1b\\\x1b]4;6;?\x1b\\"
 
 var (
 	graphicsOK = regexp.MustCompile(`\x1b_Gi=31;OK\x1b\\`)
 	cellReply  = regexp.MustCompile(`\x1b\[6;(\d+);(\d+)t`)
+	// OSC 10/11/4 replies: ESC ] 10 ; rgb:RRRR/GGGG/BBBB (ST or BEL)
+	colorReply = regexp.MustCompile(`\x1b\](10|11|4;(\d+));rgb:([0-9a-fA-F]{1,4})/([0-9a-fA-F]{1,4})/([0-9a-fA-F]{1,4})`)
 	da1Reply   = regexp.MustCompile(`\x1b\[\?[0-9;]*c`)
 )
 
@@ -41,7 +56,27 @@ func parseReply(reply []byte) Caps {
 		caps.CellH, _ = strconv.Atoi(string(m[1]))
 		caps.CellW, _ = strconv.Atoi(string(m[2]))
 	}
+	caps.Colors.Palette = map[int]string{}
+	for _, m := range colorReply.FindAllSubmatch(reply, -1) {
+		hex := "#" + channel(m[3]) + channel(m[4]) + channel(m[5])
+		switch string(m[1]) {
+		case "10":
+			caps.Colors.FG = hex
+		case "11":
+			caps.Colors.BG = hex
+		default:
+			n, _ := strconv.Atoi(string(m[2]))
+			caps.Colors.Palette[n] = hex
+		}
+	}
 	return caps
+}
+
+// channel scales a 1-4 digit hex channel ("f", "ff", "ffff") to two digits.
+func channel(b []byte) string {
+	v, _ := strconv.ParseUint(string(b), 16, 16)
+	max := uint64(1)<<(4*len(b)) - 1
+	return fmt.Sprintf("%02x", v*255/max)
 }
 
 // Size returns an image's pixel size without decoding it fully.

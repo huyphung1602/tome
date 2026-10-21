@@ -155,15 +155,20 @@ type frame struct {
 }
 
 type renderer struct {
-	doc     *Doc
-	width   int
-	fit     func(src string, maxCols int) (cols, rows int)
-	css     CSS
-	script  int // inside <sup> or <sub>
-	chapter int
-	block   int
-	path    string
-	title   string
+	doc    *Doc
+	width  int
+	fit    func(src string, maxCols int) (cols, rows int)
+	css    CSS
+	script int // inside <sup> or <sub>
+
+	// block map (BlockMap only): the element each block came from
+	nodes     map[*html.Node]int
+	stack     []*html.Node
+	startNode *html.Node // element holding the first text of the block being built
+	chapter   int
+	block     int
+	path      string
+	title     string
 
 	cur          []Span
 	style        Style
@@ -205,6 +210,7 @@ func (r *renderer) text(s string) {
 		s = toScript(s, r.script)
 	}
 	if s != "" {
+		r.markStart()
 		r.cur = append(r.cur, Span{s, r.style})
 	}
 }
@@ -221,7 +227,7 @@ func (r *renderer) hasContent() bool {
 // flush lays out the buffered inline content as one block.
 func (r *renderer) flush(center bool) {
 	if !r.hasContent() {
-		r.cur = nil
+		r.cur, r.startNode = nil, nil
 		return
 	}
 	r.startBlock()
@@ -248,8 +254,56 @@ func (r *renderer) flush(center bool) {
 	for fi := range r.frames {
 		r.frames[fi].used = true
 	}
+	r.recordBlock()
 	r.block++
 	r.cur = nil
+}
+
+// topBlock is the innermost non-inline element being walked.
+func (r *renderer) topBlock() *html.Node {
+	for i := len(r.stack) - 1; i >= 0; i-- {
+		if !inlineTags[r.stack[i].Data] {
+			return r.stack[i]
+		}
+	}
+	return nil
+}
+
+// markStart notes the element that holds a block's first text.
+func (r *renderer) markStart() {
+	if r.nodes != nil && len(r.cur) == 0 && r.startNode == nil {
+		r.startNode = r.topBlock()
+	}
+}
+
+// recordBlock maps the element a finished block came from to its number.
+func (r *renderer) recordBlock() {
+	if r.nodes == nil {
+		return
+	}
+	n := r.startNode
+	if n == nil {
+		n = r.topBlock()
+	}
+	if _, ok := r.nodes[n]; n != nil && !ok {
+		r.nodes[n] = r.block
+	}
+	r.startNode = nil
+}
+
+// BlockMap parses a chapter and maps each element that starts a block to
+// that block's number, the same numbering Render gives Line.Block, so
+// another view of the HTML (the browser) can find a reading position.
+func BlockMap(ch epub.Chapter, css CSS) (*html.Node, map[*html.Node]int) {
+	doc, err := html.Parse(bytes.NewReader(ch.HTML))
+	if err != nil {
+		return nil, nil
+	}
+	d := &Doc{anchors: map[string]int{}, chapterIdx: map[string]int{}, ChapterStart: []int{0}}
+	r := &renderer{doc: d, width: 80, css: css, lastRule: -1, path: ch.Path, nodes: map[*html.Node]int{}}
+	r.walk(doc)
+	r.flush(false)
+	return doc, r.nodes
 }
 
 func (r *renderer) onlyBlanksAfter(i int) bool {
@@ -335,6 +389,11 @@ func (r *renderer) walk(n *html.Node) {
 			r.walk(c)
 		}
 		return
+	}
+
+	if r.nodes != nil {
+		r.stack = append(r.stack, n)
+		defer func() { r.stack = r.stack[:len(r.stack)-1] }()
 	}
 
 	for _, a := range n.Attr {
@@ -429,6 +488,7 @@ func (r *renderer) walk(n *html.Node) {
 	case "hr":
 		r.flush(false)
 		r.pendingBlank = true
+		r.markStart()
 		r.cur = []Span{{Text: "* * *"}}
 		r.flush(true)
 		r.pendingBlank = true
@@ -596,11 +656,13 @@ func (r *renderer) image(src, alt string) {
 			for row := 0; row < rows; row++ {
 				r.doc.Lines = append(r.doc.Lines, Line{Chapter: r.chapter, Block: r.block, Image: len(r.doc.Images), ImageRow: row})
 			}
+			r.recordBlock()
 			r.block++
 			r.pendingBlank = true
 			return
 		}
 	}
+	r.markStart()
 	r.cur = []Span{{label, Faint}}
 	r.doc.Images = append(r.doc.Images, img)
 	r.imageRef = len(r.doc.Images)

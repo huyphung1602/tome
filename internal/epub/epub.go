@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/url"
 	"path"
+	"regexp"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -19,8 +20,15 @@ type Book struct {
 	Author   string
 	Chapters []Chapter
 	TOC      []TOCEntry
-	CSS      string // every stylesheet in the manifest, concatenated
+	CSS      string       // every stylesheet in the manifest, concatenated
+	Styles   []Stylesheet // the same stylesheets, one by one with their paths
 	file     string
+}
+
+// Stylesheet is one CSS file of the book.
+type Stylesheet struct {
+	Path string // path inside the zip
+	Text string
 }
 
 // ReadFile returns a resource (e.g. an image) by its path inside the zip.
@@ -190,6 +198,7 @@ func Open(filename string) (*Book, error) {
 		if it.MediaType == "text/css" {
 			if css, err := read(p); err == nil {
 				b.CSS += string(css) + "\n"
+				b.Styles = append(b.Styles, Stylesheet{Path: p, Text: string(css)})
 			}
 		}
 		if it.MediaType == "application/x-dtbncx+xml" {
@@ -227,7 +236,40 @@ func Open(filename string) (*Book, error) {
 			b.TOC = parseNCX(data, path.Dir(ncxPath))
 		}
 	}
+	nestParts(b.TOC)
 	return b, nil
+}
+
+// partTitle matches titles of book parts: "PHẦN I", "Phần 2", "Part One",
+// "BOOK III", "Quyển 1", "Tập 2"...
+var partTitle = regexp.MustCompile(`(?i)^\s*(phần|part|book|quyển|tập)\s+([ivxlcdm]+|\d+|one|two|three|four|five|six|seven|eight|nine|ten|một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười)\b`)
+
+// nestParts gives a flat contents list the hierarchy its titles imply:
+// entries after a "Part …" entry become its children until the next part.
+// Lists that already have levels are left alone.
+func nestParts(toc []TOCEntry) {
+	parts := 0
+	for _, e := range toc {
+		if e.Depth != 0 {
+			return
+		}
+		if partTitle.MatchString(e.Title) {
+			parts++
+		}
+	}
+	if parts < 2 {
+		return
+	}
+	inPart := false
+	for i := range toc {
+		if partTitle.MatchString(toc[i].Title) {
+			inPart = true
+			continue
+		}
+		if inPart {
+			toc[i].Depth = 1
+		}
+	}
 }
 
 // resolve turns an href relative to dir into a zip path plus fragment.

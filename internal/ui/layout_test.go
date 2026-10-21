@@ -141,3 +141,129 @@ func TestLongChapterTitleKeepsPercent(t *testing.T) {
 		t.Errorf("percent cut off: %q", st)
 	}
 }
+
+func TestOpenInBrowserKey(t *testing.T) {
+	m := New(testBook(), state.Position{}, nil)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	for _, e := range m.menuEntries() {
+		if e.key == "o" {
+			t.Fatal("menu offers the browser without SetWeb")
+		}
+	}
+	got := -1
+	m.SetWeb(func(ch, block int) (bool, error) { got = ch; return false, nil })
+	keys(m, runes("n"), runes("n")) // chapter 2
+	press := func() {
+		_, cmd := m.Update(runes("o"))
+		if cmd != nil {
+			if msg := cmd(); msg != nil {
+				m.Update(msg) // the browser opens in the background
+			}
+		}
+	}
+	press()
+	if got != 2 || !strings.Contains(m.notice, "opened in your browser · link copied") {
+		t.Errorf("chapter %d, notice %q", got, m.notice)
+	}
+	found := false
+	for _, e := range m.menuEntries() {
+		found = found || e.key == "o"
+	}
+	if !found {
+		t.Error("menu lacks open in browser")
+	}
+	m.SetWeb(func(int, int) (bool, error) { return false, fmt.Errorf("no browser") })
+	press()
+	if !strings.Contains(m.notice, "no browser") {
+		t.Errorf("error not shown: %q", m.notice)
+	}
+	m.SetWeb(func(int, int) (bool, error) { return true, nil })
+	press()
+	if !strings.Contains(m.notice, "already open in your browser") {
+		t.Errorf("second open should say it's already open: %q", m.notice)
+	}
+}
+
+func TestEscStepsBackOneLevel(t *testing.T) {
+	m := New(testBook(), state.Position{}, nil)
+	m.SetBookList(true)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	esc := func() tea.Cmd { _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc}); return cmd }
+	quits := func(cmd tea.Cmd) bool {
+		if cmd == nil {
+			return false
+		}
+		_, ok := cmd().(tea.QuitMsg)
+		return ok
+	}
+
+	keys(m, runes("?"))
+	if quits(esc()) || m.overlay != overlayNone {
+		t.Fatal("esc should close the help first")
+	}
+	keys(m, tea.KeyMsg{Type: tea.KeyTab})
+	if quits(esc()) || m.focusTOC {
+		t.Fatal("esc should leave the contents first")
+	}
+	typeSearch(m, "para")
+	keys(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if quits(esc()) || m.search.query != "" {
+		t.Fatal("esc should clear the search first")
+	}
+	if !quits(esc()) || m.QuitAll() {
+		t.Error("esc with nothing open should go back to the book list")
+	}
+}
+
+func TestWebSyncBothWays(t *testing.T) {
+	m := New(testBook(), state.Position{}, nil)
+	var sent [][2]int
+	m.SetWebSync(func(c, b int) { sent = append(sent, [2]int{c, b}) })
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	keys(m, runes("n")) // chapter 1
+	if len(sent) == 0 || sent[len(sent)-1][0] != 1 {
+		t.Fatalf("tome didn't report its position: %v", sent)
+	}
+	n := len(sent)
+	keys(m, runes("n")) // same move again would be chapter 2
+	if len(sent) != n+1 {
+		t.Errorf("expected one report per move, got %v", sent[n:])
+	}
+
+	// the browser moved: tome follows and doesn't echo it back
+	n = len(sent)
+	m.Update(WebPos{Chapter: 0, Block: 10})
+	if got := topText(m); got != "c0 para 9" {
+		t.Errorf("followed the browser to %q", got)
+	}
+	if len(sent) != n {
+		t.Errorf("echoed the browser's position back: %v", sent[n:])
+	}
+}
+
+func TestClickBookTitleOpensBrowser(t *testing.T) {
+	m := New(testBook(), state.Position{}, nil)
+	m.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+	m.View()
+	// no browser support: the title is plain text
+	m.Update(mouse(m.titleX, m.barY(), tea.MouseButtonLeft, tea.MouseActionPress))
+	opened := false
+	m.SetWeb(func(int, int) (bool, error) { opened = true; return false, nil })
+	m.View()
+	_, cmd := m.Update(mouse(m.titleX, m.barY(), tea.MouseButtonLeft, tea.MouseActionPress))
+	if cmd == nil {
+		t.Fatal("clicking the title did nothing")
+	}
+	if msg := cmd(); msg != nil {
+		m.Update(msg)
+	}
+	if !opened || !strings.Contains(m.notice, "opened in your browser") {
+		t.Errorf("opened=%v notice=%q", opened, m.notice)
+	}
+	// a click right after the title isn't on it
+	opened = false
+	m.Update(mouse(m.titleX+m.titleW, m.barY(), tea.MouseButtonLeft, tea.MouseActionPress))
+	if opened {
+		t.Error("click beside the title opened the browser")
+	}
+}

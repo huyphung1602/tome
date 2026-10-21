@@ -44,6 +44,7 @@ const (
 	menuImages
 	menuSearch
 	menuBookmarks
+	menuWeb
 	menuBack
 	menuQuit
 )
@@ -69,10 +70,13 @@ func (m *Model) menuEntries() []menuEntry {
 	if m.doc != nil && len(m.doc.Images) > 0 {
 		items = append(items, menuEntry{"images", "i", menuImages})
 	}
+	if m.webFn != nil {
+		items = append(items, menuEntry{"open in browser", "o", menuWeb})
+	}
 	if m.bookList {
-		items = append(items, menuEntry{"back to book list", "q", menuBack}, menuEntry{"quit", "ctrl+c", menuQuit})
+		items = append(items, menuEntry{"back to book list", "esc", menuBack}, menuEntry{"quit", "ctrl+c", menuQuit})
 	} else {
-		items = append(items, menuEntry{"quit", "q", menuQuit})
+		items = append(items, menuEntry{"quit", "esc", menuQuit})
 	}
 	return items
 }
@@ -80,9 +84,9 @@ func (m *Model) menuEntries() []menuEntry {
 // helpRows are the keybinding sheet; mouse and copy rows explain what the
 // terminal's usual gestures do inside tome.
 func (m *Model) helpRows() [][2]string {
-	quit := [][2]string{{"q", "save position & quit"}}
+	quit := [][2]string{{"esc  q", "save position & quit"}}
 	if m.bookList {
-		quit = [][2]string{{"q", "save position, back to book list"}, {"ctrl+c", "quit tome"}}
+		quit = [][2]string{{"esc  q", "save position, back to book list"}, {"ctrl+c", "quit tome"}}
 	}
 	rows := [][2]string{
 		{"j k  ↓ ↑", "move the cursor (dim ◆); the page scrolls at the edges"},
@@ -102,6 +106,7 @@ func (m *Model) helpRows() [][2]string {
 		{"< >", "narrower / wider contents"},
 		{"- +", "shorter / taller reading frame"},
 		{"i", "view the image on screen (← → next, o open)"},
+		{"o", "open the book in your browser (or click its title)"},
 		{"m  ?", "menu, this help"},
 		{"", ""},
 		{"drag", "select text, copied when you let go"},
@@ -365,6 +370,8 @@ func (m *Model) activateMenu(i int) tea.Cmd {
 		m.openSearch()
 	case menuBookmarks:
 		m.overlay, m.bmSel, m.bmTop = overlayBookmarks, 0, 0
+	case menuWeb:
+		return m.openWeb()
 	case menuImages:
 		idx := m.firstVisibleImage()
 		if idx < 0 {
@@ -638,6 +645,11 @@ func (m *Model) onMenuButton(x, y int) bool {
 
 func (m *Model) onTOCButton(x, y int) bool {
 	return m.tocBtnX >= 0 && y == m.barY() && x >= m.tocBtnX && x < m.tocBtnX+runewidth.StringWidth(tocLabel)
+}
+
+// onTitle reports a click on the book title in the button bar.
+func (m *Model) onTitle(x, y int) bool {
+	return m.webFn != nil && y == m.barY() && x >= m.titleX && x < m.titleX+m.titleW
 }
 
 func (m *Model) onKeysButton(x, y int) bool {

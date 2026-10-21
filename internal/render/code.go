@@ -242,6 +242,8 @@ func (r *renderer) codeBlock(n *html.Node) {
 		}
 	}
 	r.codeLine([]Span{{"╰" + strings.Repeat("─", max(0, avail-1)), Faint}}, 0, false, true)
+	r.startNode = n
+	r.recordBlock()
 	r.block++
 	r.pendingBlank = true
 }

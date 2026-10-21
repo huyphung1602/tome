@@ -82,6 +82,8 @@ type Model struct {
 	dragL        int       // group's left edge, frozen while the sidebar border is dragged
 	keysX, menuX int       // status-line buttons, set when the status line is drawn
 	tocBtnX      int
+	titleX       int // book title in the button bar: a click opens the browser
+	titleW       int
 	initCmd      tea.Cmd
 	inline       bool // draw images in the reading column
 	layoutH      int  // height the doc was laid out for (inline images depend on it)
@@ -105,6 +107,10 @@ type Model struct {
 	caretOn   bool // the cursor mark is showing; it hides after caretIdle
 	caretID   int
 	reveal    bool // something aimed at a spot this update: show the cursor
+
+	webFn    func(chapter, block int) (already bool, err error) // opens the book in the browser (w); nil disables it
+	webSync  func(chapter, block int)                           // tells the browser where the reader is
+	lastSync [2]int
 }
 
 // isMouseFragment spots the tail of a mouse escape sequence (e.g.
@@ -126,6 +132,49 @@ func isMouseFragment(msg tea.KeyMsg) bool {
 		}
 	}
 	return semi || msg.Runes[0] == '<' && msg.Runes[1] >= '0' && msg.Runes[1] <= '9'
+}
+
+// SetWeb enables "open in browser" (o, or a click on the book title); open shows the book at a paragraph
+// and reports whether a browser tab was already showing it.
+func (m *Model) SetWeb(open func(chapter, block int) (bool, error)) { m.webFn = open }
+
+// SetWebSync makes the model report its reading position as it changes.
+func (m *Model) SetWebSync(sync func(chapter, block int)) {
+	m.webSync = sync
+	m.lastSync = [2]int{-1, -1}
+}
+
+// WebPos is the browser's reading position, sent while it scrolls.
+type WebPos struct{ Chapter, Block int }
+
+func (m *Model) syncWeb() {
+	if m.webSync == nil || m.doc == nil {
+		return
+	}
+	p := m.position()
+	if pos := [2]int{p.Chapter, p.Block}; pos != m.lastSync {
+		m.lastSync = pos
+		m.webSync(pos[0], pos[1])
+	}
+}
+
+func (m *Model) openWeb() tea.Cmd {
+	if m.webFn == nil {
+		return nil
+	}
+	p := m.position()
+	open := m.webFn
+	m.notice = "opening in your browser…"
+	// opening a browser can take a moment; don't hold up the UI
+	return func() tea.Msg {
+		already, err := open(p.Chapter, p.Block)
+		return webOpenedMsg{already, err}
+	}
+}
+
+type webOpenedMsg struct {
+	already bool
+	err     error
 }
 
 // SetBookList marks the book as opened from the picker, so q returns to it.
@@ -347,6 +396,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.reveal = false
 		cmd = tea.Batch(cmd, m.showCaret())
 	}
+	m.syncWeb()
 	return m, cmd
 }
 
@@ -364,6 +414,24 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice = ""
 		}
 		return m, nil
+	case WebPos:
+		if m.doc != nil {
+			m.top = m.doc.Locate(msg.Chapter, msg.Block)
+			m.clamp()
+			m.keepCursorOnScreen()
+			// came from the browser: don't send it back
+			p := m.position()
+			m.lastSync = [2]int{p.Chapter, p.Block}
+		}
+		return m, nil
+	case webOpenedMsg:
+		switch {
+		case msg.err != nil:
+			return m, m.flash("couldn't open the browser: " + msg.err.Error())
+		case msg.already:
+			return m, m.flash("already open in your browser · link copied")
+		}
+		return m, m.flash("opened in your browser · link copied")
 	case caretIdleMsg:
 		if msg.id == m.caretID {
 			m.caretOn = false
@@ -411,6 +479,7 @@ func (m *Model) key(k string) tea.Cmd {
 		m.persist()
 		return tea.Quit
 	}
+	hadSelection := m.sel.active
 	m.sel.active = false
 	if m.search.prompt {
 		m.searchKey(k)
@@ -437,11 +506,22 @@ func (m *Model) key(k string) tea.Cmd {
 	case "'":
 		m.overlay, m.bmSel, m.bmTop = overlayBookmarks, 0, 0
 		return nil
+	case "o":
+		return m.openWeb()
 	case "esc":
-		if m.search.query != "" && !m.focusTOC {
+		// esc steps back one level: contents, search, selection, then the book
+		switch {
+		case m.focusTOC:
+			m.focusTOC = false
+			return nil
+		case m.search.query != "":
 			m.search = searchState{}
 			return nil
+		case hadSelection:
+			return nil
 		}
+		m.persist()
+		return tea.Quit
 	case "q":
 		m.persist()
 		return tea.Quit
@@ -572,6 +652,8 @@ func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 			m.overlay = overlayHelp
 		case m.onTOCButton(msg.X, msg.Y+m.textTop()):
 			return m.key("t")
+		case m.onTitle(msg.X, msg.Y+m.textTop()):
+			return m.openWeb()
 		case side && msg.X >= border-1 && msg.X <= border+1:
 			m.dragging, m.dragL = true, m.tocX
 		case inTOC:
@@ -915,6 +997,7 @@ func (m *Model) topBar() string {
 	}
 	rightW := btnW(buttons)
 	title := runewidth.Truncate(m.book.Title, max(1, width-rightW-2), "…")
+	m.titleX, m.titleW = left, runewidth.StringWidth(title)
 	gap := max(1, width-runewidth.StringWidth(title)-rightW)
 	line := strings.Repeat(" ", left) + faint.Render(title) + strings.Repeat(" ", gap)
 	x := left + runewidth.StringWidth(title) + gap

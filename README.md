@@ -18,6 +18,7 @@ Open a book, and tome gives you a quiet page: one readable column, a table of co
 - **Saved progress**: each book reopens at the paragraph you were reading, even after a window resize.
 - **Search and bookmarks**: find any phrase in the book, bookmark paragraphs, and jump back to them later.
 - **Keyboard and mouse**: Vim keys, clicks and scrolling all work. Drag over text to copy clean paragraphs.
+- **Browser view**: press `o`, or click the book title, to open the book in your browser at the paragraph you're reading. Scrolling in either one moves the other. The page has the same calm frame, with a terminal theme that takes your terminal's colors, a light and a dark theme, and mono, serif or sans text.
 
 ### Inline images
 
@@ -63,7 +64,8 @@ The buttons above the text show the most useful keys: `t` for the table of conte
 | `t` | show or hide the contents |
 | `-` `+` | shorter or taller page |
 | `i` | view the image on screen |
-| `q` | back to your books |
+| `o` | open the book in your browser (or click its title) |
+| `esc` | step back: close a panel, clear a search, then back to your books |
 
 ## Images
 

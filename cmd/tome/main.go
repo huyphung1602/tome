@@ -16,6 +16,7 @@ import (
 	"github.com/huyphung1602/tome/internal/library"
 	"github.com/huyphung1602/tome/internal/state"
 	"github.com/huyphung1602/tome/internal/ui"
+	"github.com/huyphung1602/tome/internal/web"
 )
 
 // version is set at build time with -ldflags "-X main.version=v1.2.3".
@@ -67,6 +68,7 @@ func buildVersion() string {
 }
 
 type app struct {
+	web      *web.Server // started on the first "open in browser", shared by every book
 	stateDir string
 	caps     kitty.Caps
 	images   string // TOME_IMAGES
@@ -77,10 +79,11 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	a := &app{stateDir: dir, images: os.Getenv("TOME_IMAGES")}
-	if a.images != "off" {
-		a.caps = kitty.Probe(time.Second)
-	}
+	a := &app{web: web.New(), stateDir: dir, images: os.Getenv("TOME_IMAGES")}
+	defer a.web.Close()
+	// also asks for the terminal's colors, which the browser view follows
+	a.caps = kitty.Probe(time.Second)
+	a.web.SetTheme(web.Theme{FG: a.caps.Colors.FG, BG: a.caps.Colors.BG, Palette: a.caps.Colors.Palette})
 
 	home, _ := os.UserHomeDir()
 	root := home
@@ -152,6 +155,23 @@ func (a *app) read(file string, fromList bool) (quitAll bool, err error) {
 		}
 	})
 	m.SetBookList(fromList)
+	a.web.SetReadHeight(prefs.ReadHeight)
+	m.SetWebSync(a.web.Position)
+	a.web.Warm(book) // the first "open in browser" shouldn't wait for the server
+	m.SetWeb(func(chapter, block int) (bool, error) {
+		url, err := a.web.Open(book)
+		if err != nil {
+			return false, err
+		}
+		url = fmt.Sprintf("%s#p%d-%d", url, chapter, block) // opens at this paragraph
+		clipboard.Write(url)                                // a fallback when the browser doesn't come to the front
+		if a.web.Connected() {
+			// a tab already follows tome; don't open another one
+			a.web.Position(chapter, block)
+			return true, nil
+		}
+		return false, web.OpenBrowser(url)
+	})
 	if !hinted { // first run: say where the keys are
 		m.ShowHint()
 		prefs.Hinted = true
@@ -167,7 +187,11 @@ func (a *app) read(file string, fromList bool) (quitAll bool, err error) {
 			m.EnableImages(os.Stdout, true, a.caps.CellW, a.caps.CellH)
 		}
 	}
-	_, err = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
+	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	// the browser's scrolling moves the book here too
+	a.web.SetOnPosition(func(chapter, block int) { prog.Send(ui.WebPos{Chapter: chapter, Block: block}) })
+	_, err = prog.Run()
+	a.web.SetOnPosition(nil)
 	os.Stdout.Write(m.CleanupGraphics())
 	if err != nil {
 		return true, err
