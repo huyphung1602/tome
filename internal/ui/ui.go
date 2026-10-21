@@ -69,6 +69,7 @@ type Model struct {
 	garden  *gardenScreen
 	// sends the garden to the browser view
 	webGarden func(books map[string]map[string]int, goal int, today string)
+	lastPush  time.Time
 
 	w, h     int
 	colW     int

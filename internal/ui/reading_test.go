@@ -134,3 +134,21 @@ func TestWebGarden(t *testing.T) {
 		t.Error("the minute tick didn't refresh the web garden")
 	}
 }
+
+// Reading shows up on the page within seconds, not at the next minute.
+func TestWebGardenFollowsReading(t *testing.T) {
+	m, _, advance := readingModel(t)
+	var pushes int
+	m.SetWebGarden(func(map[string]map[string]int, int, string) { pushes++ })
+	pushes = 0
+	advance(15 * time.Second)
+	m.Update(WebActive{})
+	if pushes != 1 {
+		t.Fatalf("activity after 15s pushed %d times, want 1", pushes)
+	}
+	advance(3 * time.Second)
+	m.Update(WebPos{Chapter: 1})
+	if pushes != 1 {
+		t.Errorf("pushed again after 3s: %d", pushes)
+	}
+}

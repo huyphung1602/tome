@@ -30,9 +30,14 @@ func (m *Model) SetWebGarden(fn func(books map[string]map[string]int, goal int, 
 
 func (m *Model) pushGarden() {
 	if m.webGarden != nil {
-		m.webGarden(m.gardenBooks(), m.goal, garden.DayOf(m.clock()))
+		m.lastPush = m.clock()
+		m.webGarden(m.gardenBooks(), m.goal, garden.DayOf(m.lastPush))
 	}
 }
+
+// pushInterval is how often reading refreshes the browser's garden and
+// "today" while someone reads.
+const pushInterval = 10 * time.Second
 
 // changeGoal sets the daily goal from either garden, saves it and tells
 // the other one.
@@ -71,6 +76,9 @@ func (m *Model) track(msg tea.Msg) {
 	switch msg.(type) {
 	case tea.KeyMsg, tea.MouseMsg, WebPos, WebActive:
 		m.credit(m.counter.Activity(now))
+		if now.Sub(m.lastPush) >= pushInterval {
+			m.pushGarden()
+		}
 	case tea.FocusMsg:
 		m.counter.Start(now)
 	case tea.BlurMsg:
