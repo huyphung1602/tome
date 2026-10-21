@@ -13,6 +13,7 @@ import (
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/huyphung1602/tome/internal/garden"
 	"github.com/huyphung1602/tome/internal/library"
 	"github.com/huyphung1602/tome/internal/state"
 )
@@ -39,6 +40,13 @@ type Picker struct {
 	w, h    int
 	maxH    int
 	rowItem []int // list row -> index in shown, -1 for headers
+
+	// reading garden: this week's trees above the list, ctrl+g for all
+	books   map[string]map[string]int
+	goal    int
+	setGoal func(int)
+	now     func() time.Time
+	garden  *gardenScreen
 }
 
 // frameH is the picker's height: the reading frame plus its status line.
@@ -65,7 +73,7 @@ const maxRecent = 5
 // NewPicker builds the book list. readHeight is the reading-frame
 // preference (0 = default), so the picker sits in the same frame.
 func NewPicker(lib *library.Library, recent []state.Position, root, home, notice string, readHeight int) *Picker {
-	p := &Picker{lib: lib, recent: recent, root: root, home: home, notice: notice, maxH: defaultHeight}
+	p := &Picker{lib: lib, recent: recent, root: root, home: home, notice: notice, maxH: defaultHeight, now: time.Now}
 	if readHeight > 0 {
 		p.maxH = max(minHeight, readHeight)
 	}
@@ -164,9 +172,56 @@ func (p *Picker) filter() {
 	}
 }
 
-func (p *Picker) listH() int { return max(1, p.frameH()-5) }
+// SetGarden shows this week's trees above the list.
+func (p *Picker) SetGarden(books map[string]map[string]int, goal int, setGoal func(int)) {
+	p.books, p.goal = books, goal
+	p.setGoal = func(g int) {
+		p.goal = g
+		if setGoal != nil {
+			setGoal(g)
+		}
+	}
+}
+
+// stripH is the rows the garden takes above the list: summary, the week
+// and a blank line, only the summary when that would squeeze the list
+// below six rows, or nothing.
+func (p *Picker) stripH() int {
+	if p.books == nil {
+		return 0
+	}
+	free := p.frameH() - 5
+	switch {
+	case free-9 >= 6 && min(p.w-4, 100) >= weekW: // a week of trees needs 69 columns
+		return 9
+	case free-2 >= 6:
+		return 2
+	}
+	return 0
+}
+
+func (p *Picker) listH() int { return max(1, p.frameH()-5-p.stripH()) }
+
+func (p *Picker) openGarden() {
+	p.garden = newGarden(p.books, p.goal, p.setGoal, p.now())
+}
 
 func (p *Picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if p.garden != nil {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			if msg.Type == tea.KeyCtrlC {
+				return p, tea.Quit
+			}
+			if p.garden.key(msg.String()) {
+				p.garden = nil
+			}
+			return p, nil
+		case tea.MouseMsg:
+			p.garden.mouse(msg)
+			return p, nil
+		}
+	}
 	switch msg := msg.(type) {
 	case tickMsg:
 		p.refresh()
@@ -184,7 +239,12 @@ func (p *Picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.move(3)
 		case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft:
 			y := msg.Y - p.frameTop()
-			if row := y - 3 + p.offset; y >= 3 && row < len(p.rowItem) && p.rowItem[row] >= 0 {
+			top := 3 + p.stripH()
+			if y >= 3 && y < top && p.books != nil {
+				p.openGarden()
+				return p, nil
+			}
+			if row := y - top + p.offset; y >= top && row < len(p.rowItem) && p.rowItem[row] >= 0 {
 				p.cursor = p.rowItem[row]
 				return p, p.open()
 			}
@@ -196,6 +256,10 @@ func (p *Picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyCtrlC:
 			return p, tea.Quit
+		case tea.KeyCtrlG:
+			if p.books != nil {
+				p.openGarden()
+			}
 		case tea.KeyEsc:
 			if p.query == "" {
 				return p, tea.Quit
@@ -244,12 +308,26 @@ func (p *Picker) View() string {
 	if p.w == 0 {
 		return ""
 	}
+	if p.garden != nil {
+		return p.garden.view(p.w, p.h)
+	}
 	width := min(p.w-4, 100)
 	margin := strings.Repeat(" ", max(0, (p.w-width)/2))
 	rows := []string{
 		margin + bold.Render("tome") + faint.Render("  pick a book"),
 		margin + "> " + p.query + reverse.Render(" "),
 		"",
+	}
+	if sh := p.stripH(); sh > 0 {
+		days := gardenDays(p.books)
+		today := garden.DayTime(p.now())
+		rows = append(rows, margin+faint.Render(gardenSummary(days, today, p.goal)))
+		if sh == 9 {
+			for _, l := range weekRow(days, garden.Monday(today), today, time.Time{}, p.goal) {
+				rows = append(rows, margin+l)
+			}
+		}
+		rows = append(rows, "")
 	}
 
 	// list rows: section headers + entries
@@ -321,6 +399,10 @@ func (p *Picker) View() string {
 		status = p.notice
 	}
 	hint := "↑↓ select · enter open · esc quit"
+	if p.books != nil {
+		hint = "↑↓ select · enter open · ctrl+g garden · esc quit"
+	}
+	hint = runewidth.Truncate(hint, max(0, width-runewidth.StringWidth(status)-2), "…")
 	gap := max(2, width-runewidth.StringWidth(hint)-runewidth.StringWidth(status))
 	rows = append(rows, "", margin+faint.Render(hint+strings.Repeat(" ", gap)+status))
 	rows = rows[:min(len(rows), p.frameH())]

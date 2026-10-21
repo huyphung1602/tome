@@ -83,6 +83,13 @@ When the mouse wheel scrolls fast, especially through a multiplexer, a mouse esc
 
 **Contents hierarchy.** When a book's contents list is completely flat, entries titled like parts ("PHẦN I", "Part Two", "Book 3", "Quyển 1") become parents of the entries after them, in tome and in the browser. Lists with real levels are left alone.
 
+
+## Reading garden (`internal/garden`, `ui/garden.go`, `ui/reading.go`)
+
+Only time is measured, never pages or position, so reading forward, back or again all count. Any key, click, scroll or browser scroll in an open book is activity; the gap since the previous activity counts, capped at 3 minutes, so walking away or a sleeping laptop costs at most 3 minutes. Losing terminal focus stops the count (focus reporting), and opening a book starts it. A reading day runs from 04:00 to 04:00 and a gap across 04:00 is split. Each book's state file keeps seconds per day; the reader hands over only what it counted since its last save (every minute and on close), and the save adds it to what the file holds, so two windows never overwrite each other's time. The garden sums every state file.
+
+Trees are 9×10 pixel art drawn with `▀` (top pixel as foreground, bottom as background), so a tree is 9 columns by 5 rows and a week fits the 72-column frame. Colors are palette indexes (leaves 2 and 10, trunk 3, flowers 13, fruit 9). The level is the day's time against the daily goal (30 minutes by default, `+`/`-` in the garden): under half a sprout, then sapling, tree at the goal, big tree at 1.5×, flowers at 2× and fruit at 4×. Trees are computed, never stored, so changing the goal redraws the past. The streak counts days with at least a minute and keeps yesterday's run until today is read.
+
 ## Overlays (`internal/ui`)
 
 The overlays follow herdr's approach. tome draws the full reading view first, then splices a bordered box over it, cutting the underlying rows at display-cell positions. Only one overlay is open at a time: the menu (anchored above `● menu`), the keybinding help, or the image viewer. While an overlay is open, it receives every key, and clicking outside it closes it.

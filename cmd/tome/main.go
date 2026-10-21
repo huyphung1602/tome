@@ -108,6 +108,7 @@ func run(args []string) error {
 	notice := ""
 	for {
 		p := ui.NewPicker(lib, state.Recent(dir), root, home, notice, state.LoadPrefs(dir).ReadHeight)
+		p.SetGarden(state.Reading(dir, ""), state.LoadPrefs(dir).Goal(), a.setGoal)
 		if _, err := tea.NewProgram(p, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 			return err
 		}
@@ -123,6 +124,13 @@ func run(args []string) error {
 			return nil
 		}
 	}
+}
+
+// setGoal saves the garden's daily goal in minutes.
+func (a *app) setGoal(minutes int) {
+	pr := state.LoadPrefs(a.stateDir)
+	pr.DailyMinutes = minutes
+	state.SavePrefs(a.stateDir, pr)
 }
 
 // read opens one book until the user closes it; quitAll reports ctrl+c.
@@ -145,16 +153,28 @@ func (a *app) read(file string, fromList bool) (quitAll bool, err error) {
 	hinted := prefs.Hinted
 	var saveErr error
 	m := ui.New(book, pos, func(p state.Position) {
-		if err := state.SavePrefs(a.stateDir, state.Prefs{HideTOC: p.HideTOC, TOCWidth: p.TOCWidth, ReadHeight: p.ReadHeight, Hinted: true}); err != nil {
+		if p.ReadingOnly {
+			if err := state.AddReading(a.stateDir, key, p.ReadingAdd); err != nil {
+				saveErr = err
+			}
+			return
+		}
+		pr := state.LoadPrefs(a.stateDir)
+		pr.HideTOC, pr.TOCWidth, pr.ReadHeight, pr.Hinted = p.HideTOC, p.TOCWidth, p.ReadHeight, true
+		if err := state.SavePrefs(a.stateDir, pr); err != nil {
 			saveErr = err
 		}
 		p.HideTOC, p.TOCWidth, p.ReadHeight = false, 0, 0
 		p.Path, p.Title, p.Author, p.Opened = abs, book.Title, book.Author, opened
+		// add the new time to what the file holds now: another window may
+		// have saved its own meanwhile
+		p.Reading = state.MergeReading(state.Load(a.stateDir, key).Reading, p.ReadingAdd)
 		if err := state.Save(a.stateDir, key, p); err != nil {
 			saveErr = err
 		}
 	})
 	m.SetBookList(fromList)
+	m.SetGarden(state.Reading(a.stateDir, key), prefs.Goal(), a.setGoal)
 	a.web.SetReadHeight(prefs.ReadHeight)
 	m.SetWebSync(a.web.Position)
 	m.SetWebBookmarks(a.web.SetBookmarks) // bookmarks are shared with the browser view
@@ -188,7 +208,7 @@ func (a *app) read(file string, fromList bool) (quitAll bool, err error) {
 			m.EnableImages(os.Stdout, true, a.caps.CellW, a.caps.CellH)
 		}
 	}
-	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus())
 	// the browser's scrolling moves the book here too
 	a.web.SetOnPosition(func(chapter, block int) { prog.Send(ui.WebPos{Chapter: chapter, Block: block}) })
 	a.web.SetOnBookmark(func(chapter, block int) { prog.Send(ui.WebBookmark{Chapter: chapter, Block: block}) })

@@ -15,6 +15,7 @@ import (
 	"github.com/mattn/go-runewidth"
 
 	"github.com/huyphung1602/tome/internal/epub"
+	"github.com/huyphung1602/tome/internal/garden"
 	"github.com/huyphung1602/tome/internal/kitty"
 	"github.com/huyphung1602/tome/internal/render"
 	"github.com/huyphung1602/tome/internal/state"
@@ -56,6 +57,16 @@ type Model struct {
 	doc  *render.Doc
 	toc  []tocItem
 	save func(state.Position)
+
+	// reading garden (reading.go)
+	clock   func() time.Time
+	counter garden.Counter
+	mine    map[string]time.Duration // this book's time per day, saved and new
+	unsaved map[string]time.Duration // counted but not yet handed to save
+	others  map[string]map[string]int
+	goal    int // minutes a day; 0 until SetGarden
+	setGoal func(int)
+	garden  *gardenScreen
 
 	w, h     int
 	colW     int
@@ -220,10 +231,16 @@ func New(book *epub.Book, pos state.Position, save func(state.Position)) *Model 
 	for _, e := range book.TOC {
 		m.toc = append(m.toc, tocItem{title: e.Title, depth: e.Depth, path: e.Path, frag: e.Fragment})
 	}
+	m.clock = time.Now
+	m.mine, m.unsaved = map[string]time.Duration{}, map[string]time.Duration{}
+	for day, s := range pos.Reading {
+		m.mine[day] = time.Duration(s) * time.Second
+	}
+	m.counter.Start(m.clock()) // opening the book counts as activity
 	return m
 }
 
-func (m *Model) Init() tea.Cmd { return m.initCmd }
+func (m *Model) Init() tea.Cmd { return tea.Batch(m.initCmd, readTick()) }
 
 // ShowHint flashes "press ? for keybinds" when the book opens (first run).
 func (m *Model) ShowHint() { m.initCmd = m.flashFor("press ? for keybinds", 5*time.Second) }
@@ -357,7 +374,9 @@ func (m *Model) position() state.Position {
 
 func (m *Model) persist() {
 	if m.save != nil && m.doc != nil {
-		m.save(m.position())
+		p := m.position()
+		p.ReadingAdd = m.drainReading()
+		m.save(p)
 	}
 }
 
@@ -411,6 +430,7 @@ func (m *Model) prevChapter() {
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m.track(msg)
 	_, cmd := m.update(msg)
 	if sync := m.syncImages(); sync != nil {
 		cmd = tea.Batch(cmd, sync)
@@ -461,6 +481,11 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.flash("already open in your browser · link copied")
 		}
 		return m, m.flash("opened in your browser · link copied")
+	case readTickMsg:
+		if add := m.drainReading(); add != nil && m.save != nil {
+			m.save(state.Position{ReadingAdd: add, ReadingOnly: true})
+		}
+		return m, readTick()
 	case caretIdleMsg:
 		if msg.id == m.caretID {
 			m.caretOn = false
@@ -468,6 +493,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.MouseMsg:
 		if m.doc == nil {
+			return m, nil
+		}
+		if m.overlay == overlayGarden && m.garden != nil {
+			m.garden.mouse(msg)
 			return m, nil
 		}
 		// any click clears the selection, wherever it lands; a press in the
@@ -537,6 +566,9 @@ func (m *Model) key(k string) tea.Cmd {
 		return nil
 	case "o":
 		return m.openWeb()
+	case "ctrl+g":
+		m.openGarden()
+		return nil
 	case "esc":
 		// esc steps back one level: contents, search, selection, then the book
 		switch {
@@ -778,6 +810,9 @@ func (m *Model) View() string {
 	if m.doc == nil {
 		return ""
 	}
+	if m.overlay == overlayGarden && m.garden != nil {
+		return m.garden.view(m.w, m.h)
+	}
 	bodyH := m.bodyH()
 	rows := make([]string, 0, m.h)
 
@@ -980,6 +1015,9 @@ func (m *Model) status() string {
 		title = m.toc[cur].title
 	}
 	pct := fmt.Sprintf(" · %d%%", m.percent())
+	if m.goal > 0 {
+		pct += fmt.Sprintf(" · today %s/%dm", garden.FormatMinutes(m.todaySecs()), m.goal)
+	}
 	s := title + pct
 	if st := m.searchStatus(); st != "" {
 		s = st

@@ -23,6 +23,17 @@ type Position struct {
 
 	Bookmarks []Mark `json:"bookmarks,omitempty"`
 
+	// Reading is seconds read per day ("2006-01-02"), for the garden.
+	Reading map[string]int `json:"reading,omitempty"`
+	// ReadingAdd is what the reader counted since its last save. It is
+	// added to the file's Reading at save time, never written itself, so
+	// two windows can't overwrite each other's time.
+	ReadingAdd map[string]int `json:"-"`
+	// ReadingOnly asks the save to store ReadingAdd and nothing else (the
+	// reader's minute tick), so an idle window doesn't rewrite the position
+	// or bookmarks another window saved.
+	ReadingOnly bool `json:"-"`
+
 	// Book details, for the recent list in the book picker.
 	Path   string `json:"path,omitempty"`
 	Title  string `json:"title,omitempty"`
@@ -77,11 +88,7 @@ func Save(dir, key string, p Position) error {
 		return err
 	}
 	data, _ := json.Marshal(p)
-	tmp := filepath.Join(dir, key+".json.tmp")
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, filepath.Join(dir, key+".json"))
+	return writeAtomic(dir, key+".json", data)
 }
 
 // Recent returns saved positions of books that still exist, most recently
@@ -109,12 +116,63 @@ func Recent(dir string) []Position {
 	return out
 }
 
+// MergeReading adds seconds per day to saved ones.
+func MergeReading(saved, add map[string]int) map[string]int {
+	if len(add) == 0 {
+		return saved
+	}
+	if saved == nil {
+		saved = map[string]int{}
+	}
+	for day, s := range add {
+		saved[day] += s
+	}
+	return saved
+}
+
+// AddReading adds seconds per day to a book's saved reading time,
+// leaving the rest of its state as the file has it.
+func AddReading(dir, key string, add map[string]int) error {
+	if len(add) == 0 {
+		return nil
+	}
+	p := Load(dir, key)
+	p.Reading = MergeReading(p.Reading, add)
+	return Save(dir, key, p)
+}
+
+// Reading collects seconds per day per book title from every state file
+// except skip, including books whose file has since gone.
+func Reading(dir, skip string) map[string]map[string]int {
+	out := map[string]map[string]int{}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		key, ok := strings.CutSuffix(e.Name(), ".json")
+		if !ok || e.Name() == "prefs.json" || key == skip {
+			continue
+		}
+		p := Load(dir, key)
+		title := p.Title
+		if title == "" {
+			title = strings.TrimSuffix(filepath.Base(p.Path), filepath.Ext(p.Path))
+		}
+		for day, s := range p.Reading {
+			if out[day] == nil {
+				out[day] = map[string]int{}
+			}
+			out[day][title] += s
+		}
+	}
+	return out
+}
+
 // Prefs are UI settings shared by every book.
 type Prefs struct {
-	HideTOC    bool `json:"hide_toc,omitempty"`
-	TOCWidth   int  `json:"toc_width,omitempty"`
-	ReadHeight int  `json:"read_height,omitempty"` // rows; 0 = default
-	Hinted     bool `json:"hinted,omitempty"`      // the "press ? for keybinds" hint was shown
+	HideTOC      bool `json:"hide_toc,omitempty"`
+	TOCWidth     int  `json:"toc_width,omitempty"`
+	ReadHeight   int  `json:"read_height,omitempty"`   // rows; 0 = default
+	Hinted       bool `json:"hinted,omitempty"`        // the "press ? for keybinds" hint was shown
+	DailyMinutes int  `json:"daily_minutes,omitempty"` // the garden's goal; 0 = default
 }
 
 func LoadPrefs(dir string) Prefs {
@@ -125,14 +183,41 @@ func LoadPrefs(dir string) Prefs {
 	return p
 }
 
+// Goal is the daily reading goal in minutes.
+func (p Prefs) Goal() int {
+	if p.DailyMinutes <= 0 {
+		return 30
+	}
+	return p.DailyMinutes
+}
+
 func SavePrefs(dir string, p Prefs) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	data, _ := json.Marshal(p)
-	tmp := filepath.Join(dir, "prefs.json.tmp")
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	return writeAtomic(dir, "prefs.json", data)
+}
+
+// writeAtomic replaces dir/name through a temp file of its own, so two
+// tome windows saving at once never write into the same temp file.
+func writeAtomic(dir, name string, data []byte) error {
+	f, err := os.CreateTemp(dir, name+".*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(dir, "prefs.json"))
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(f.Name(), 0o644)
+	}
+	if err == nil {
+		err = os.Rename(f.Name(), filepath.Join(dir, name))
+	}
+	if err != nil {
+		os.Remove(f.Name())
+	}
+	return err
 }

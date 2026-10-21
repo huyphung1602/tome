@@ -28,6 +28,7 @@ const (
 	overlayHelp
 	overlayImage
 	overlayBookmarks
+	overlayGarden
 )
 
 const (
@@ -44,6 +45,7 @@ const (
 	menuImages
 	menuSearch
 	menuBookmarks
+	menuGarden
 	menuWeb
 	menuBack
 	menuQuit
@@ -66,6 +68,7 @@ func (m *Model) menuEntries() []menuEntry {
 		{toc, "t", menuTOC},
 		{"search", "/", menuSearch},
 		{"bookmarks", "'", menuBookmarks},
+		{"garden", "ctrl+g", menuGarden},
 	}
 	if m.doc != nil && len(m.doc.Images) > 0 {
 		items = append(items, menuEntry{"images", "i", menuImages})
@@ -100,6 +103,7 @@ func (m *Model) helpRows() [][2]string {
 		{"{ }", "previous / next paragraph"},
 		{"B", "bookmark / unbookmark the cursor's paragraph"},
 		{"'", "list bookmarks"},
+		{"ctrl+g", "reading garden: a tree for each day you read"},
 		{"", ""},
 		{"t", "show / hide contents"},
 		{"tab", "focus contents (enter jumps, esc leaves)"},
@@ -336,6 +340,10 @@ func (m *Model) overlayKey(k string) tea.Cmd {
 		}
 	case overlayBookmarks:
 		m.bookmarksKey(k)
+	case overlayGarden:
+		if m.garden.key(k) {
+			m.overlay, m.garden = overlayNone, nil
+		}
 	case overlayImage:
 		switch k {
 		case "esc", "q", "i", "enter":
@@ -370,6 +378,8 @@ func (m *Model) activateMenu(i int) tea.Cmd {
 		m.openSearch()
 	case menuBookmarks:
 		m.overlay, m.bmSel, m.bmTop = overlayBookmarks, 0, 0
+	case menuGarden:
+		m.openGarden()
 	case menuWeb:
 		return m.openWeb()
 	case menuImages:

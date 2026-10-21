@@ -128,7 +128,7 @@ func TestMenuEntriesDependOnContext(t *testing.T) {
 		}
 		return strings.Join(l, ",")
 	}
-	if got := labels(); got != "keybinds=?,hide contents=t,search=/,bookmarks=',images=i,quit=esc" {
+	if got := labels(); got != "keybinds=?,hide contents=t,search=/,bookmarks=',garden=ctrl+g,images=i,quit=esc" {
 		t.Errorf("standalone menu = %s", got)
 	}
 	m.SetBookList(true)
