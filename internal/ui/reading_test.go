@@ -102,3 +102,35 @@ func TestTickSavesOnlyNewReading(t *testing.T) {
 		t.Errorf("idle tick saved again: %+v", saves[1:])
 	}
 }
+
+func TestWebGarden(t *testing.T) {
+	m, saved, advance := readingModel(t)
+	var pushed []int
+	m.SetWebGarden(func(books map[string]map[string]int, goal int, today string) {
+		pushed = append(pushed, goal)
+		if today != "2026-10-21" || books["2026-10-21"]["Other"] != 300 {
+			t.Errorf("pushed %v %s", books, today)
+		}
+	})
+	if len(pushed) != 1 {
+		t.Fatalf("no push when the web garden was set: %v", pushed)
+	}
+	var goal int
+	m.setGoal = func(g int) { goal = g }
+	m.Update(WebGoal{Minutes: 45})
+	if m.goal != 45 || goal != 45 || pushed[len(pushed)-1] != 45 {
+		t.Errorf("goal %d saved %d pushed %v", m.goal, goal, pushed)
+	}
+	// being at the page counts as reading, even without scrolling
+	advance(50 * time.Second)
+	m.Update(WebActive{})
+	m.persist()
+	if got := saved.Reading["2026-10-21"]; got != 50 {
+		t.Errorf("web activity saved %d seconds, want 50", got)
+	}
+	n := len(pushed)
+	m.Update(readTickMsg{})
+	if len(pushed) != n+1 {
+		t.Error("the minute tick didn't refresh the web garden")
+	}
+}

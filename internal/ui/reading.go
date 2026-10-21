@@ -14,6 +14,39 @@ import (
 
 type readTickMsg struct{}
 
+// WebGoal is the browser changing the daily goal.
+type WebGoal struct{ Minutes int }
+
+// WebActive is the reader doing something on the browser page.
+type WebActive struct{}
+
+// SetWebGarden sends the garden to the browser view: every book's time
+// per day, the goal and today's key. It is sent now, every minute and
+// whenever the goal changes.
+func (m *Model) SetWebGarden(fn func(books map[string]map[string]int, goal int, today string)) {
+	m.webGarden = fn
+	m.pushGarden()
+}
+
+func (m *Model) pushGarden() {
+	if m.webGarden != nil {
+		m.webGarden(m.gardenBooks(), m.goal, garden.DayOf(m.clock()))
+	}
+}
+
+// changeGoal sets the daily goal from either garden, saves it and tells
+// the other one.
+func (m *Model) changeGoal(g int) {
+	m.goal = g
+	if m.setGoal != nil {
+		m.setGoal(g)
+	}
+	if m.garden != nil {
+		m.garden.goal = g
+	}
+	m.pushGarden()
+}
+
 // readTick saves the time counted so far once a minute, so a crash loses
 // at most a minute.
 func readTick() tea.Cmd {
@@ -36,7 +69,7 @@ func (m *Model) SetGarden(others map[string]map[string]int, goal int, setGoal fu
 func (m *Model) track(msg tea.Msg) {
 	now := m.clock()
 	switch msg.(type) {
-	case tea.KeyMsg, tea.MouseMsg, WebPos:
+	case tea.KeyMsg, tea.MouseMsg, WebPos, WebActive:
 		m.credit(m.counter.Activity(now))
 	case tea.FocusMsg:
 		m.counter.Start(now)
@@ -100,12 +133,6 @@ func (m *Model) openGarden() {
 	if goal == 0 {
 		goal = 30
 	}
-	setGoal := func(g int) {
-		m.goal = g
-		if m.setGoal != nil {
-			m.setGoal(g)
-		}
-	}
-	m.garden = newGarden(m.gardenBooks(), goal, setGoal, m.clock())
+	m.garden = newGarden(m.gardenBooks(), goal, m.changeGoal, m.clock())
 	m.overlay = overlayGarden
 }

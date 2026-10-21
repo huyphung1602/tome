@@ -33,6 +33,9 @@ type Server struct {
 	onPos      func(chapter, block int) // the browser scrolled
 	onMark     func(chapter, block int) // the browser toggled a bookmark
 	marks      string                   // bookmarks as JSON, [[chapter, block], ...]
+	garden     string                   // the garden view as JSON (garden.go)
+	onGoal     func(minutes int)        // the page changed the daily goal
+	onActive   func()                   // the reader did something on the page
 	pos        string                   // last position sent to browsers, "chapter,block"
 	clients    map[chan string]bool     // open event streams
 }
@@ -159,7 +162,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	book, token := s.book, s.token
 	s.mu.Unlock()
 	rest, ok := strings.CutPrefix(r.URL.Path, "/"+token+"/")
-	writes := rest == "bookmark" // the one endpoint that changes state takes POST
+	writes := rest == "bookmark" || rest == "goal" || rest == "active" // endpoints that change state take POST
 	if !ok || token == "" || book == nil || (writes && r.Method != http.MethodPost) || (!writes && r.Method != http.MethodGet) {
 		http.NotFound(w, r)
 		return
@@ -183,6 +186,27 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		if fn != nil {
 			fn(c, b)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	case rest == "goal":
+		var m int
+		if _, err := fmt.Sscanf(r.URL.Query().Get("m"), "%d", &m); err != nil || m < 5 || m > 120 {
+			http.Error(w, "bad goal", http.StatusBadRequest)
+			return
+		}
+		s.mu.Lock()
+		fn := s.onGoal
+		s.mu.Unlock()
+		if fn != nil {
+			fn(m)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	case rest == "active":
+		s.mu.Lock()
+		fn := s.onActive
+		s.mu.Unlock()
+		if fn != nil {
+			fn()
 		}
 		w.WriteHeader(http.StatusNoContent)
 	case rest == "pos":
@@ -253,7 +277,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	ch := make(chan string, 16)
 	s.mu.Lock()
 	s.clients[ch] = true
-	pos, marks := s.pos, s.marks
+	pos, marks, gardenJSON := s.pos, s.marks, s.garden
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); delete(s.clients, ch); s.mu.Unlock() }()
 	if pos != "" {
@@ -261,6 +285,9 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 	if marks != "" {
 		fmt.Fprintf(w, "event: bookmarks\ndata: %s\n\n", marks)
+	}
+	if gardenJSON != "" {
+		fmt.Fprintf(w, "event: garden\ndata: %s\n\n", gardenJSON)
 	}
 	fl.Flush()
 	for {

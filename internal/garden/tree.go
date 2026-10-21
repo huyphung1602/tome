@@ -80,6 +80,9 @@ var grids = [MaxLevel + 1][10]string{
 	{"...LLL...", "..LFLLg..", ".LLLgFgg.", "LLggRggFg", "LgFgggRgg", ".gRggFgg.", "..ggRgg..", "....T....", "....T....", "...TTT..."},
 }
 
+// Grid is a level's pixel art, for drawing it elsewhere (the browser).
+func Grid(level int) [10]string { return grids[max(0, min(level, MaxLevel))] }
+
 // palette maps pixels to ANSI colors, so the terminal's theme picks shades.
 var palette = map[byte]int{'g': 2, 'L': 10, 'T': 3, 'F': 13, 'R': 9, 'd': 8}
 

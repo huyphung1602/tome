@@ -175,6 +175,9 @@ func (a *app) read(file string, fromList bool) (quitAll bool, err error) {
 	})
 	m.SetBookList(fromList)
 	m.SetGarden(state.Reading(a.stateDir, key), prefs.Goal(), a.setGoal)
+	m.SetWebGarden(func(books map[string]map[string]int, goal int, today string) {
+		a.web.SetGarden(web.Garden{Books: books, Goal: goal, Today: today})
+	})
 	a.web.SetReadHeight(prefs.ReadHeight)
 	m.SetWebSync(a.web.Position)
 	m.SetWebBookmarks(a.web.SetBookmarks) // bookmarks are shared with the browser view
@@ -212,9 +215,13 @@ func (a *app) read(file string, fromList bool) (quitAll bool, err error) {
 	// the browser's scrolling moves the book here too
 	a.web.SetOnPosition(func(chapter, block int) { prog.Send(ui.WebPos{Chapter: chapter, Block: block}) })
 	a.web.SetOnBookmark(func(chapter, block int) { prog.Send(ui.WebBookmark{Chapter: chapter, Block: block}) })
+	a.web.SetOnGoal(func(minutes int) { prog.Send(ui.WebGoal{Minutes: minutes}) })
+	a.web.SetOnActive(func() { prog.Send(ui.WebActive{}) })
 	_, err = prog.Run()
 	a.web.SetOnPosition(nil)
 	a.web.SetOnBookmark(nil)
+	a.web.SetOnGoal(nil)
+	a.web.SetOnActive(nil)
 	os.Stdout.Write(m.CleanupGraphics())
 	if err != nil {
 		return true, err

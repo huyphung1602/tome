@@ -30,16 +30,18 @@ type Caps struct {
 }
 
 // Colors are the terminal's theme colors as "#rrggbb", "" when unknown.
-// Palette holds the ANSI colors tome uses (1-6).
+// Palette holds the ANSI colors tome uses (1-6, and 8, 9, 10, 13 for the
+// garden's trees).
 type Colors struct {
 	FG, BG  string
 	Palette map[int]string
 }
 
 // ColorQuery asks for the default foreground (OSC 10), background (OSC 11)
-// and ANSI colors 1-6 (OSC 4).
+// and the ANSI colors tome uses (OSC 4).
 const ColorQuery = "\x1b]10;?\x1b\\\x1b]11;?\x1b\\" +
-	"\x1b]4;1;?\x1b\\\x1b]4;2;?\x1b\\\x1b]4;3;?\x1b\\\x1b]4;4;?\x1b\\\x1b]4;5;?\x1b\\\x1b]4;6;?\x1b\\"
+	"\x1b]4;1;?\x1b\\\x1b]4;2;?\x1b\\\x1b]4;3;?\x1b\\\x1b]4;4;?\x1b\\\x1b]4;5;?\x1b\\\x1b]4;6;?\x1b\\" +
+	"\x1b]4;8;?\x1b\\\x1b]4;9;?\x1b\\\x1b]4;10;?\x1b\\\x1b]4;13;?\x1b\\"
 
 var (
 	graphicsOK = regexp.MustCompile(`\x1b_Gi=31;OK\x1b\\`)

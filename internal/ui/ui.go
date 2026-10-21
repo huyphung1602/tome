@@ -67,6 +67,8 @@ type Model struct {
 	goal    int // minutes a day; 0 until SetGarden
 	setGoal func(int)
 	garden  *gardenScreen
+	// sends the garden to the browser view
+	webGarden func(books map[string]map[string]int, goal int, today string)
 
 	w, h     int
 	colW     int
@@ -485,7 +487,13 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if add := m.drainReading(); add != nil && m.save != nil {
 			m.save(state.Position{ReadingAdd: add, ReadingOnly: true})
 		}
+		m.pushGarden()
 		return m, readTick()
+	case WebGoal:
+		m.changeGoal(max(5, min(120, msg.Minutes)))
+		return m, nil
+	case WebActive:
+		return m, nil
 	case caretIdleMsg:
 		if msg.id == m.caretID {
 			m.caretOn = false

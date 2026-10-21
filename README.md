@@ -17,7 +17,7 @@ Open a book, and tome gives you a quiet page: one readable column, a table of co
 - **Book picker**: run `tome` to choose from recent books or every EPUB in your home folder. Type to filter, with or without accents.
 - **Saved progress**: each book reopens at the paragraph you were reading, even after a window resize.
 - **Search and bookmarks**: find any phrase in the book, bookmark paragraphs, and jump back to them later.
-- **Reading garden**: tome counts the minutes you spend reading each day, across all your books, and grows a tree for each day. Read longer and the tree grows bigger, then flowers and bears fruit. See this week above your books, or press `ctrl+g` for the whole garden.
+- **Reading garden**: tome counts the minutes you spend reading each day, across all your books, and grows a tree for each day. Read longer and the tree grows bigger, then flowers and bears fruit. See this week above your books, or press `ctrl+g` for the whole garden, in the terminal or the browser view.
 - **Keyboard and mouse**: Vim keys, clicks and scrolling all work. Drag over text to copy clean paragraphs.
 - **Browser view**: press `o`, or click the book title, to open the book in your browser at the paragraph you're reading. Scrolling in either one moves the other. The page has the same calm frame, with a terminal theme that takes your terminal's colors, a light and a dark theme, and mono, serif or sans text. Search and bookmarks work there too, and bookmarks are shared with tome.
 

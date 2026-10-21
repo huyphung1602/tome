@@ -53,7 +53,7 @@ func buildPage(book *epub.Book, base string, theme Theme, readHeight int) []byte
 	}
 	data, _ := json.Marshal(map[string]any{
 		"html": body, "sheets": sheets, "inline": inline, "base": base,
-		"lines": readHeight, "terminal": terminalTheme(theme),
+		"lines": readHeight, "terminal": terminalTheme(theme), "garden": gardenGrids(),
 	})
 	title := book.Title
 	if title == "" {
@@ -86,6 +86,9 @@ func terminalTheme(t Theme) map[string]any {
 		"muted": blend(t.FG, t.BG, 0.5), "line": blend(t.FG, t.BG, 0.18),
 		"h1": pal(5, t.FG), "h2": pal(4, t.FG), "h3": pal(6, t.FG), "accent": pal(4, t.FG),
 		"kw": pal(4, t.FG), "str": pal(2, t.FG), "num": pal(6, t.FG), "type": pal(5, t.FG), "mark": pal(1, t.FG),
+		// the garden's trees, in the colors the terminal draws them with
+		"tg": pal(2, "#7fb069"), "tl": pal(10, pal(2, "#a8d672")), "tt": pal(3, "#b58a5a"),
+		"tf": pal(13, pal(5, "#f28fad")), "tr": pal(9, pal(1, "#f0645a")), "td": pal(8, blend(t.FG, t.BG, 0.25)),
 		"dark": luminance(t.BG) < 0.5,
 	}
 }
@@ -171,6 +174,31 @@ body.finding #find { display: inline-flex; } body.finding #where { display: none
 #settings .row:last-child { margin-bottom: 0; }
 #settings button { border: 1px solid var(--line); border-radius: 6px; padding: .3rem .7rem; }
 #settings button.on { border-color: var(--fg); font-weight: 600; }
+/* the reading garden: a tree per day, drawn from tome's pixel art */
+#garden { position: fixed; inset: 0; z-index: 8; display: none; background: var(--bg); overflow-y: auto; }
+#garden.open { display: block; }
+#garden .wrap { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1.5rem 0; }
+#garden header { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); }
+#garden header b { color: var(--fg); margin-right: .75rem; }
+#garden h3 { font-size: 14px; font-weight: 600; margin: 2rem 0 .75rem; }
+#garden h3 span { color: var(--muted); font-weight: 400; }
+#garden .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: .25rem; margin-bottom: 1rem; }
+#garden .day { display: flex; flex-direction: column; align-items: center; padding: .35rem 0; border-radius: 8px; cursor: pointer; }
+#garden .day:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+#garden .day.sel { background: color-mix(in srgb, var(--fg) 11%, transparent); }
+#garden .day.future { cursor: default; opacity: .45; }
+#garden .day.future:hover { background: none; }
+#garden svg { width: 54px; height: 60px; shape-rendering: crispEdges; }
+#garden .lbl { font-size: 12px; color: var(--muted); margin-top: .3rem; }
+#garden .mins { font-size: 12px; color: var(--fg); min-height: 1.2em; }
+#garden .foot { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); margin-top: 1.5rem; padding: 1rem 0 1.25rem; }
+#garden .legend { display: grid; grid-template-columns: repeat(6, 1fr); gap: .25rem; }
+#garden .legend div { display: flex; flex-direction: column; align-items: center; font-size: 12px; color: var(--muted); }
+#garden .legend svg { width: 36px; height: 40px; }
+#garden .row2 { display: flex; justify-content: space-between; align-items: center; margin-top: .9rem; color: var(--muted); font-size: 13px; }
+#garden .goal button { border: 1px solid var(--line); border-radius: 6px; width: 1.8rem; height: 1.6rem; margin-left: .35rem; }
+#garden .goal button:hover { border-color: var(--muted); color: var(--fg); }
+#garden .empty { color: var(--muted); margin: 1rem 0; }
 @media (max-width: 900px) {
   #frame { grid-template-columns: min(var(--measure), 92vw); }
   #toc { position: fixed; inset: 0 auto 0 0; width: 80vw; max-width: 20rem; background: var(--bg); z-index: 4; padding: 2rem 1.5rem; display: none; }
@@ -184,6 +212,7 @@ body.finding #find { display: inline-flex; } body.finding #where { display: none
     <button id="tocBtn" title="contents (t)"><kbd>t</kbd>contents</button>
     <button id="findBtn" title="search (/)"><kbd>/</kbd>search</button>
     <button id="marksBtn" title="bookmarks (')"><kbd>'</kbd>bookmarks</button>
+    <button id="gardenBtn" title="reading garden (ctrl+g)"><kbd>⌃g</kbd>garden</button>
     <button id="gear" title="theme and font"><kbd>,</kbd>settings</button></span></div>
   <nav id="toc">{{TOC}}</nav>
   <div id="page"><div id="book"></div></div>
@@ -191,6 +220,12 @@ body.finding #find { display: inline-flex; } body.finding #where { display: none
 </div>
 <div id="marks" class="popup"><h2>bookmarks</h2><div id="markList"></div>
   <p class="hint">B bookmarks the paragraph at the top · or click the left margin next to a paragraph</p></div>
+<div id="garden"><div class="wrap">
+  <header><span><b>garden</b><span class="summary"></span></span><button class="close" title="close (esc)">esc ×</button></header>
+  <div class="body"></div>
+  <div class="foot"><div class="legend"></div>
+    <div class="row2"><span class="detail"></span><span class="goal">goal <span class="goalv"></span><button data-goal="-5" title="lower the goal (-)">−</button><button data-goal="5" title="raise the goal (+)">+</button></span></div></div>
+</div></div>
 <div id="settings">
   <h2>theme</h2><div class="row" data-key="theme"><button data-v="terminal">terminal</button><button data-v="paper">paper</button><button data-v="night">night</button></div>
   <h2>font</h2><div class="row" data-key="font"><button data-v="mono">mono</button><button data-v="serif">serif</button><button data-v="sans">sans</button></div>
@@ -199,9 +234,11 @@ body.finding #find { display: inline-flex; } body.finding #where { display: none
 const data = {{DATA}};
 const THEMES = {
   paper: { bg: "#f6f1e7", fg: "#2e2a24", muted: "#8a8170", line: "#e3dccd", h1: "#7d3c6b", h2: "#2f5d8a", h3: "#2f7a7a", accent: "#2f5d8a",
-           kw: "#2f5d8a", str: "#4f7a2a", num: "#2f7a7a", type: "#7d3c6b", mark: "#b5442f", dark: false },
+           kw: "#2f5d8a", str: "#4f7a2a", num: "#2f7a7a", type: "#7d3c6b", mark: "#b5442f", dark: false,
+           tg: "#5f8f3e", tl: "#8bbf5a", tt: "#8a6240", tf: "#d77a9b", tr: "#c9473a", td: "#d8cfbd" },
   night: { bg: "#1d1c1a", fg: "#d6cebd", muted: "#8a8373", line: "#34322d", h1: "#c792b8", h2: "#8fb3d9", h3: "#86c1b9", accent: "#8fb3d9",
-           kw: "#8fb3d9", str: "#a9c98a", num: "#86c1b9", type: "#c792b8", mark: "#e07a64", dark: true },
+           kw: "#8fb3d9", str: "#a9c98a", num: "#86c1b9", type: "#c792b8", mark: "#e07a64", dark: true,
+           tg: "#7fb069", tl: "#a8d672", tt: "#b58a5a", tf: "#f28fad", tr: "#f0645a", td: "#3a3833" },
 };
 const FONTS = {
   mono:  { font: '"SF Mono", Menlo, Monaco, "Cascadia Mono", Consolas, monospace', size: 16, measure: "72ch" },
@@ -334,7 +371,8 @@ function status() {
   }
   const max = page.scrollHeight - page.clientHeight;
   const pct = max > 0 ? Math.round(100 * page.scrollTop / max) : 100;
-  document.getElementById("where").textContent = (cur >= 0 ? links[cur].textContent + " · " : "") + pct + "%";
+  document.getElementById("where").textContent = (cur >= 0 ? links[cur].textContent + " · " : "") + pct + "%" +
+    (gardenView ? " · " + gardenView.today : "");
 }
 
 // ---- keys, like tome: pages turn by the whole frame
@@ -400,6 +438,7 @@ function connect() {
     renderMarks();
     if (before !== null && before !== marks.length) note(marks.length > before ? "bookmarked" : "bookmark removed");
   });
+  es.addEventListener("garden", e => { gardenView = JSON.parse(e.data); status(); if (gardenEl.classList.contains("open")) renderGarden(); });
   es.addEventListener("error", () => { label.textContent = "tome closed"; });
 }
 
@@ -582,6 +621,101 @@ addEventListener("keydown", e => {
   else if (e.key === ",") gear.click();
   else if (e.key === "Escape") { closePopups(); if (hits.length || document.body.classList.contains("finding")) closeFind(); }
 });
+
+// ---- the reading garden: tome sends the days, the page draws the trees
+const gardenEl = document.getElementById("garden");
+let gardenView = null, gardenSel = null;
+const PIXEL = { g: "--tg", L: "--tl", T: "--tt", F: "--tf", R: "--tr", d: "--td" };
+function treeSVG(level) {
+  const grid = data.garden.grids[level];
+  let r = "";
+  grid.forEach((row, y) => { for (let x = 0; x < row.length; x++) {
+    const v = PIXEL[row[x]];
+    if (v) r += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="var(' + v + ')"/>';
+  } });
+  return '<svg viewBox="0 0 9 10" aria-hidden="true">' + r + "</svg>";
+}
+const dotSVG = '<svg viewBox="0 0 9 10" aria-hidden="true"><rect x="4" y="9" width="1" height="1" fill="var(--muted)"/></svg>';
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+function renderGarden() {
+  const v = gardenView;
+  if (!v) { gardenEl.querySelector(".body").innerHTML = '<p class="empty">waiting for tome…</p>'; return; }
+  gardenEl.querySelector(".summary").textContent = "♣ " + v.summary;
+  let h = "";
+  for (const m of v.months) {
+    h += "<h3>" + esc(m.name) + " <span>· " + esc(m.stats) + "</span></h3>";
+    for (const w of m.weeks) {
+      h += '<div class="week">';
+      for (const d of w) {
+        if (gardenSel === null && d.today) gardenSel = d.key;
+        h += '<div class="day' + (d.future ? " future" : "") + (d.key === gardenSel ? " sel" : "") + '" data-key="' + d.key + '" title="' + esc(d.detail) + '">' +
+          (d.future ? dotSVG : treeSVG(d.level)) + '<span class="lbl">' + esc(d.label) + '</span><span class="mins">' + esc(d.mins) + "</span></div>";
+      }
+      h += "</div>";
+    }
+  }
+  if (v.empty) h += '<p class="empty">read a book and your first tree grows here</p>';
+  gardenEl.querySelector(".body").innerHTML = h;
+  gardenEl.querySelector(".legend").innerHTML = v.legend.map(l => "<div>" + treeSVG(l.level) + esc(l.label) + "</div>").join("");
+  gardenEl.querySelector(".goalv").textContent = v.goal + "m/day";
+  let detail = "";
+  for (const m of v.months) for (const w of m.weeks) for (const d of w) if (d.key === gardenSel) detail = d.detail;
+  gardenEl.querySelector(".detail").textContent = detail;
+}
+function openGarden() {
+  closePopups();
+  gardenEl.classList.add("open");
+  renderGarden();
+  const sel = gardenEl.querySelector(".day.sel");
+  if (sel) sel.scrollIntoView({ block: "center" });
+}
+function closeGarden() { gardenEl.classList.remove("open"); }
+gardenEl.addEventListener("click", e => {
+  const d = e.target.closest(".day");
+  if (d && !d.classList.contains("future")) { gardenSel = d.dataset.key; renderGarden(); }
+  const b = e.target.closest("button[data-goal]");
+  if (b && gardenView) {
+    const m = Math.max(5, Math.min(120, gardenView.goal + +b.dataset.goal));
+    fetch(data.base + "goal?m=" + m, { method: "POST" }).catch(() => note("tome isn't running"));
+  }
+  if (e.target.closest(".close")) closeGarden();
+});
+document.getElementById("gardenBtn").addEventListener("click", e => { e.stopPropagation(); openGarden(); });
+// days on screen, oldest first, for arrow keys
+function gardenMove(n) {
+  const keys = [];
+  for (const m of gardenView.months) for (const w of m.weeks) for (const d of w) if (!d.future) keys.push(d.key);
+  const i = keys.indexOf(gardenSel);
+  if (i < 0) return;
+  gardenSel = keys[Math.max(0, Math.min(keys.length - 1, i + n))];
+  renderGarden();
+  const sel = gardenEl.querySelector(".day.sel");
+  if (sel) sel.scrollIntoView({ block: "nearest" });
+}
+addEventListener("keydown", e => {
+  if (e.ctrlKey && e.key === "g") { e.preventDefault(); gardenEl.classList.contains("open") ? closeGarden() : openGarden(); return; }
+  if (!gardenEl.classList.contains("open")) return;
+  e.stopImmediatePropagation();
+  if (e.key === "Escape" || e.key === "q") closeGarden();
+  else if (!gardenView) return;
+  else if (e.key === "ArrowLeft" || e.key === "h") gardenMove(-1);
+  else if (e.key === "ArrowRight" || e.key === "l") gardenMove(1);
+  else if (e.key === "ArrowUp") { e.preventDefault(); gardenMove(-7); }
+  else if (e.key === "ArrowDown") { e.preventDefault(); gardenMove(7); }
+  else if (e.key === "+" || e.key === "=") gardenEl.querySelector('[data-goal="5"]').click();
+  else if (e.key === "-") gardenEl.querySelector('[data-goal="-5"]').click();
+}, true);
+
+// reading here counts in tome even without scrolling: tell it, at most
+// every 20 seconds, that someone is at the page
+let lastActive = 0;
+function active() {
+  const now = Date.now();
+  if (document.visibilityState !== "visible" || now - lastActive < 20000) return;
+  lastActive = now;
+  fetch(data.base + "active", { method: "POST" }).catch(() => {});
+}
+for (const ev of ["keydown", "wheel", "mousemove", "pointerdown", "touchstart"]) addEventListener(ev, active, { passive: true });
 
 apply();
 Promise.all([...root.querySelectorAll("link")].map(l => new Promise(r => { l.onload = l.onerror = r; }))).then(() => {

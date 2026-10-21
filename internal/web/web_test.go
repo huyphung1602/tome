@@ -216,3 +216,81 @@ func TestBundledFonts(t *testing.T) {
 		t.Errorf("path escape: %d", code)
 	}
 }
+
+func TestGardenSync(t *testing.T) {
+	s := New()
+	defer s.Close()
+	base, _ := s.Open(testBook(t))
+	s.SetGarden(Garden{Books: map[string]map[string]int{"2026-10-21": {"A": 600}}, Goal: 30, Today: "2026-10-21"})
+
+	goals, active := make(chan int, 1), make(chan bool, 1)
+	s.SetOnGoal(func(m int) { goals <- m })
+	s.SetOnActive(func() { active <- true })
+	post := func(u string) int {
+		resp, err := http.Post(base+u, "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := post("goal?m=45"); code != 204 || <-goals != 45 {
+		t.Errorf("goal: %d", code)
+	}
+	if code := post("goal?m=x"); code != 400 {
+		t.Errorf("bad goal: %d", code)
+	}
+	if code := post("active"); code != 204 || !<-active {
+		t.Errorf("active: %d", code)
+	}
+	if code, _, _ := get(t, base+"goal?m=40"); code != 404 { // changes state: POST only
+		t.Errorf("GET goal: %d", code)
+	}
+
+	resp, err := http.Get(base + "events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	// events can be longer than one read: collect them in the background
+	chunks := make(chan string, 64)
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := resp.Body.Read(buf)
+			chunks <- string(buf[:n])
+			if err != nil {
+				close(chunks)
+				return
+			}
+		}
+	}()
+	var seen strings.Builder
+	until := func(want string) bool {
+		timeout := time.After(2 * time.Second)
+		for !strings.Contains(seen.String(), want) {
+			select {
+			case c, ok := <-chunks:
+				if !ok {
+					return false
+				}
+				seen.WriteString(c)
+			case <-timeout:
+				return false
+			}
+		}
+		return true
+	}
+	if !until("event: garden") || !until(`"goal":30`) || !until(`"today":"today 10m/30m"`) {
+		t.Errorf("first events lack the garden")
+	}
+	s.SetGarden(Garden{Goal: 45, Today: "2026-10-21"})
+	if !until(`"goal":45`) {
+		t.Errorf("no garden event after SetGarden")
+	}
+
+	_, _, page := get(t, base)
+	if !strings.Contains(page, `"grids":`) || !strings.Contains(page, `id="garden"`) {
+		t.Error("page lacks the garden")
+	}
+}
